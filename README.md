@@ -137,4 +137,5 @@ assets/shaders/rangezone.frag
 ## License / credit
 
 Author: **Tomahawk**  
+Discord:  **weihalt**
 Display name: **Mod Engine**
