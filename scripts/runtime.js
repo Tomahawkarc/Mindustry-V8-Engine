@@ -1714,12 +1714,7 @@ var ModEngineRuntime = (function(){
             if(payload.value) ensureSpeedHud(); else removeSpeedHud();
             return;
         }
-        if(cmd === "transport:toggleOverlay"){
-            if(ui != null && ui.state != null) ui.state.transportOverlay = !!payload.value;
-            notify("TRANSPORT OVERLAY: " + (payload.value ? "ON" : "OFF"));
-            return;
-        }
-        if(cmd === "world:timeOfDay"){
+                if(cmd === "world:timeOfDay"){
             applyWorldTime(payload.value);
             return;
         }
@@ -2603,272 +2598,6 @@ var ModEngineRuntime = (function(){
         }catch(e){}
     }
 
-    function resolveItem(raw){
-        if(raw == null) return null;
-        try{
-            // Already an Item
-            if(raw.uiIcon != null || raw.fullIcon != null || raw.name != null && raw.hardness != null) return raw;
-        }catch(e){}
-        try{
-            if(typeof raw === "number") return Vars.content.item(raw | 0);
-        }catch(e2){}
-        try{
-            // packed buffer formats
-            if(BufferItem != null && typeof raw === "number") return Vars.content.item(BufferItem.item(raw));
-        }catch(e3){}
-        return null;
-    }
-
-    function drawItemIcon(item, x, y, size, alpha){
-        item = resolveItem(item);
-        if(item == null) return;
-        try{
-            var region = null;
-            try{ region = item.fullIcon; }catch(eFull){}
-            if(region == null || !region.found()){
-                try{ region = item.uiIcon; }catch(eUi){}
-            }
-            if(region == null || !region.found()) return;
-            Draw.z(Layer.overlayUI + 0.03);
-            // Do NOT pass shared Color.white into Draw.color(color, alpha) — it mutates the constant.
-            Draw.color(1, 1, 1, alpha == null ? 0.85 : alpha);
-            Draw.rect(region, x, y, size, size);
-            Draw.reset();
-        }catch(e){}
-    }
-
-    function inCameraWorld(x, y, pad){
-        try{
-            var cam = Core.camera;
-            if(cam == null) return true;
-            var p = pad == null ? 64 : pad;
-            return x > cam.position.x - cam.width / 2 - p
-                && x < cam.position.x + cam.width / 2 + p
-                && y > cam.position.y - cam.height / 2 - p
-                && y < cam.position.y + cam.height / 2 + p;
-        }catch(e){
-            return true;
-        }
-    }
-
-    function segmentVisible(x1, y1, x2, y2){
-        // Visible if either endpoint is near camera OR segment AABB overlaps camera.
-        if(inCameraWorld(x1, y1, 96) || inCameraWorld(x2, y2, 96)) return true;
-        try{
-            var cam = Core.camera;
-            var pad = 96;
-            var minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
-            var minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
-            return !(maxX < cam.position.x - cam.width / 2 - pad
-                || minX > cam.position.x + cam.width / 2 + pad
-                || maxY < cam.position.y - cam.height / 2 - pad
-                || minY > cam.position.y + cam.height / 2 + pad);
-        }catch(e){
-            return true;
-        }
-    }
-
-    function drawConveyorFlow(build){
-        try{
-            var rot = build.rotation;
-            var dx = Geometry.d4x(rot), dy = Geometry.d4y(rot);
-            var px = -dy, py = dx;
-            var len = build.len;
-            if(len == null || len <= 0) return;
-            for(var i = 0; i < len; i++){
-                var item = resolveItem(build.ids[i]);
-                if(item == null) continue;
-                var ox = ((build.ys[i] || 0) - 0.5) * 8;
-                var oy = (build.xs[i] || 0) * 4;
-                drawItemIcon(item, build.x + dx * ox + px * oy, build.y + dy * ox + py * oy, 5.8, 0.8);
-            }
-        }catch(e){}
-    }
-
-    function drawRouterFlow(build){
-        try{
-            var item = resolveItem(build.lastItem);
-            if(item == null) return;
-            var rot = build.rotation;
-            var progress = Math.max(0, Math.min(1, build.time || 0));
-            var dx = Geometry.d4x(rot), dy = Geometry.d4y(rot);
-            drawItemIcon(item, build.x + dx * (progress - 0.5) * 7, build.y + dy * (progress - 0.5) * 7, 6, 0.85);
-        }catch(e){}
-    }
-
-    function bridgePeriod(build){
-        // Prefer real block timings. Fallback to a calm visual speed.
-        try{
-            if(build.block != null && build.block.speed > 0) return Math.max(12, build.block.speed);
-        }catch(e1){}
-        try{
-            if(build.block != null && build.block.transportTime > 0) return Math.max(12, build.block.transportTime);
-        }catch(e2){}
-        return 28;
-    }
-
-    function bridgeHasCargo(build){
-        try{
-            if(build.items != null && build.items.total() > 0) return true;
-        }catch(e){}
-        try{
-            if(build.buffer != null){
-                try{ if(build.buffer.index > 0) return true; }catch(e1){}
-                try{ if(build.buffer.length > 0) return true; }catch(e2){}
-                try{ if(build.buffer.size > 0) return true; }catch(e3){}
-            }
-        }catch(eB){}
-        try{
-            // recently moved this tick / last tick
-            if(build.moved === true || build.wasMoved === true) return true;
-        }catch(eM){}
-        return false;
-    }
-
-    function bridgeFirstItem(build){
-        // No JavaAdapter — keep Rhino-safe.
-        try{
-            if(build.items != null && build.items.total() > 0){
-                var first = build.items.first();
-                if(first != null) return first;
-            }
-        }catch(e){}
-        try{
-            if(build.buffer != null){
-                var arr = null;
-                try{ arr = build.buffer.buffer; }catch(e1){}
-                if(arr == null){ try{ arr = build.buffer.items; }catch(e2){} }
-                if(arr != null && arr.length > 0 && arr[0] != null){
-                    return resolveItem(arr[0]);
-                }
-            }
-        }catch(eB){}
-        try{ return resolveItem(build.lastItem); }catch(eL){}
-        return null;
-    }
-
-    function drawBridgeFlow(build){
-        try{
-            var link = -1;
-            try{ link = build.link; }catch(eL){ return; }
-            if(link == null || link === -1) return;
-
-            var otherTile = Vars.world.tile(link);
-            if(otherTile == null) return;
-            var otherBuild = otherTile.build;
-            if(otherBuild == null) return;
-
-            var x1 = build.x, y1 = build.y;
-            var x2 = otherTile.drawx(), y2 = otherTile.drawy();
-            if(!segmentVisible(x1, y1, x2, y2)) return;
-
-            // Only draw when there is actual cargo / recent movement.
-            if(!bridgeHasCargo(build)) return;
-
-            var item = bridgeFirstItem(build);
-            if(item == null) return;
-
-            // Optional soft power gate for phase bridges only.
-            try{
-                if(build.block != null && build.block.hasPower && build.power != null && build.power.status <= 0.01) return;
-            }catch(eP){}
-
-            var period = bridgePeriod(build);
-            var progress = 0;
-            try{
-                if(build.transportCounter != null && period > 0){
-                    progress = build.transportCounter / period;
-                }else{
-                    progress = (Time.time % period) / period;
-                }
-            }catch(eProg){
-                progress = (Time.time % period) / period;
-            }
-            if(progress < 0) progress = 0;
-            if(progress > 1) progress = progress - Math.floor(progress);
-
-            // At most 2 icons: current hop + one staggered behind if stack > 1.
-            var stack = 1;
-            try{ stack = Math.max(1, Math.min(2, build.items.total())); }catch(eS){}
-            for(var i = 0; i < stack; i++){
-                var f = progress - i * 0.45;
-                if(f < 0) f += 1;
-                // smoothstep
-                var eased = f * f * (3 - 2 * f);
-                drawItemIcon(item, x1 + (x2 - x1) * eased, y1 + (y2 - y1) * eased, 5.8, 0.82);
-            }
-        }catch(e){}
-    }
-
-    function drawJunctionFlow(build){
-        try{
-            if(build.buffer == null) return;
-            for(var dir = 0; dir < 4; dir++){
-                var count = 0;
-                try{ count = build.buffer.indexes[dir]; }catch(eC){ count = 0; }
-                if(count <= 0) continue;
-                var item = null;
-                try{ item = Vars.content.item(BufferItem.item(build.buffer.buffers[dir][0])); }catch(eI){}
-                if(item == null) continue;
-                var dx = Geometry.d4x(dir), dy = Geometry.d4y(dir);
-                var speed = 26;
-                try{ if(build.block != null && build.block.speed > 0) speed = build.block.speed; }catch(eS){}
-                var phase = (Time.time % speed) / speed;
-                drawItemIcon(item, build.x + dx * (phase - 0.5) * 7, build.y + dy * (phase - 0.5) * 7, 5.8, 0.75);
-            }
-        }catch(e){}
-    }
-
-    function isBridgeBuild(build){
-        try{
-            if(build instanceof ItemBridge.ItemBridgeBuild) return true;
-        }catch(e1){}
-        try{
-            if(build instanceof BufferedItemBridge.BufferedItemBridgeBuild) return true;
-        }catch(e2){}
-        // Class-name fallback for obfuscation / alternate loaders
-        try{
-            var cn = String(build.getClass().getName()).toLowerCase();
-            if(cn.indexOf("bridge") >= 0 && cn.indexOf("build") >= 0) return true;
-        }catch(e3){}
-        return false;
-    }
-
-    function drawTransportOverlay(){
-        if(ui == null || ui.state == null || !ui.state.transportOverlay) return;
-        try{
-            Groups.build.each(cons(function(build){
-                try{
-                    if(build == null || build.block == null) return;
-
-                    // Cheap camera cull for point-like blocks.
-                    var bridge = isBridgeBuild(build);
-                    if(!bridge && !inCameraWorld(build.x, build.y, 48)) return;
-
-                    if(build instanceof Conveyor.ConveyorBuild){
-                        drawConveyorFlow(build);
-                    }else if(build instanceof Router.RouterBuild){
-                        drawRouterFlow(build);
-                    }else if(build instanceof Junction.JunctionBuild){
-                        drawJunctionFlow(build);
-                    }else if(bridge){
-                        drawBridgeFlow(build);
-                    }else{
-                        // Fallback for modded conveyors by class name (safe no-op if fields missing)
-                        try{
-                            var cn = String(build.block.getClass().getName()).toLowerCase();
-                            if(cn.indexOf("conveyor") >= 0 || cn.indexOf("duct") >= 0){
-                                if(build.len != null && build.ids != null) drawConveyorFlow(build);
-                            }
-                        }catch(eName){}
-                    }
-                }catch(eBuild){}
-            }));
-        }catch(e){
-            try{ Log.err("Mod Engine transport overlay failed", e); }catch(eLog){}
-        }
-    }
-
     function installLifecycle(modUi){
         ui = modUi;
         var miningTimer = 0;
@@ -2881,6 +2610,9 @@ var ModEngineRuntime = (function(){
                 ensureQuickSelectionButton();
                 ensureSpeedHud();
                 try{ UserWorkbench.load(); }catch(e){}
+                try{
+                    if(ui != null && ui.showWelcomeIfNeeded != null) ui.showWelcomeIfNeeded();
+                }catch(eWelcome){}
             }));
         }));
 
@@ -2954,7 +2686,6 @@ var ModEngineRuntime = (function(){
             }finally{
                 try{ if(drawRanges) ModEngineRender.endRanges(); }catch(eEnd){}
             }
-            try{ drawTransportOverlay(); }catch(eTransport){}
             try{ drawTargetMarker(); }catch(eMarker){}
             try{
                 if(ui.state.buildSelectionActive && ui.state.buildSelectionDragging){
