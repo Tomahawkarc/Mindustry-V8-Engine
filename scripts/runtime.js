@@ -3058,7 +3058,9 @@ var ModEngineRuntime = (function(){
             if(ui == null || ui.state == null) return;
             if(!inGame()) return;
             var drawRanges = ui.state.showTurretRadii || ui.state.showUnitRadii;
-            // begin/end are isolated: private FBO, own z-layer, never touch renderer.effectBuffer
+            // Исправлено: больше не используем Draw.drawRange(), чтобы не ломать
+            // пайплайн effectBuffer для анимированных щитов ForceProjector (Issue#2).
+            // FBO рендеринг теперь полностью изолирован и рисуется на Layer.shields - 2.
             try{
                 if(drawRanges) ModEngineRender.beginRanges();
                 try{
