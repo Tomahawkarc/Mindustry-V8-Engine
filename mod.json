@@ -1,9 +1,9 @@
 {
   "name": "mod-engine",
-  "displayName": "Mod Engine",
-  "author": "Tomahawk",
-  "version": "1.2.0",
+  "displayName": "[#ffd28a]Mod Engine[]",
+  "author": "[#10e5e5]Tomahawk[]",
+  "version": "1.3.0",
   "minGameVersion": "154",
   "hidden": false,
-  "description": "Rhino/JS control engine + NexusOS UI for Mindustry V8.\n\n[accent]Core features[]\n• [cyan]Home[] — sector status, live core item flow, power balance\n• [cyan]Waves[] — force waves, auto-wave, composition preview\n• [cyan]World[] — time of day, wind, weather, sector capture tools\n• [cyan]Items / Units[] — inject items, spawn units, mod content filters\n• [cyan]Player / Weapon[] — pilot stats, stable unit fire-rate & turret tuning\n• [cyan]Mining[] — fleet ore assignment (multi-ore stances)\n• [cyan]Inspector[] — content browser with pagination (lower PAGE SIZE if laggy)\n• [cyan]Builds[] — instant build, structure godmode, mass selection actions\n• [cyan]Radius[] — turret/unit range overlays (shield-style non-stacking)\n• [cyan]Hotkeys[] — persistent remappable gameplay commands\n• [cyan]Console[] — in-game Rhino JS terminal\n\n[accent]Tips[]\n• First launch shows a bilingual welcome dialog (EN/RU).\n• Inspector lag? Set page size to [green]20–40[].\n• Use nav modes: [accent]USUAL[] / [scarlet]SANDBOX[] / ALL.\n\n[gray]JS-only mod. No Java classpath required.[]"
+  "description": "[#ffd28a]NEXUS_OS // MOD ENGINE[]\n[#aab0b4]Rhino/JS control engine for Mindustry V8.[]\n\n[#10e5e5]CORE SYSTEMS[]\n[white]>[] [#ffd28a]World & Waves[]  [#aab0b4]simulation, weather and wave control[]\n[white]>[] [#ffd28a]Items & Units[]  [#aab0b4]batch core injection and unit deployment[]\n[white]>[] [#ffd28a]Weapons[]  [#aab0b4]stable unit fire-rate and turret tuning[]\n[white]>[] [#ffd28a]Mining[]  [#aab0b4]multi-ore fleet assignments[]\n[white]>[] [#ffd28a]Builds & Radius[]  [#aab0b4]mass actions and range overlays[]\n[white]>[] [#ffd28a]Hotkeys & Console[]  [#aab0b4]persistent binds and Rhino shell[]\n\n[#10e5e5]QUICK ACCESS[]\n[#aab0b4]World speed and multi-item injection are attached directly below the HUD.[]\n\n[#69e89b]TIP[] [#aab0b4]Set Inspector PAGE SIZE to 20-40 on weaker devices.[]\n[#646b76]JS-only mod. No Java classpath required.[]"
 }
