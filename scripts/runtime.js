@@ -2617,6 +2617,28 @@ var ModEngineRuntime = (function(){
         }catch(e){}
     }
 
+    function camBounds(){
+        var cam = Core.camera;
+        var pad = 40;
+        return {
+            minX: cam.position.x - cam.width / 2 - pad,
+            maxX: cam.position.x + cam.width / 2 + pad,
+            minY: cam.position.y - cam.height / 2 - pad,
+            maxY: cam.position.y + cam.height / 2 + pad
+        };
+    }
+
+    function inCamera(x, y, bounds){
+        return x >= bounds.minX && x <= bounds.maxX && y >= bounds.minY && y <= bounds.maxY;
+    }
+
+    function bridgeSegmentInCamera(x1, y1, x2, y2, bounds){
+        // Cheap AABB check for the bridge segment vs camera.
+        var minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+        var minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+        return !(maxX < bounds.minX || minX > bounds.maxX || maxY < bounds.minY || minY > bounds.maxY);
+    }
+
     function drawConveyorFlow(build){
         try{
             var rot = build.rotation;
@@ -2645,23 +2667,196 @@ var ModEngineRuntime = (function(){
         }catch(e){}
     }
 
-    function drawBridgeFlow(build){
+    function bridgeTimeScale(build){
         try{
-            var other = Vars.world.tile(build.link);
-            if(other == null || other.build == null) return;
-            var item = null;
-            try{ if(build.items != null && build.items.total() > 0) item = build.items.first(); }catch(eItems){}
-            if(item == null){
-                try{ item = build.lastItem; }catch(eLast){}
+            if(build.timeScale != null) return Math.max(0.001, build.timeScale);
+        }catch(e){}
+        try{
+            if(build.timeScale() != null) return Math.max(0.001, build.timeScale());
+        }catch(e2){}
+        return 1;
+    }
+
+    function bridgeTransportPeriod(build){
+        // ItemBridge: transportTime ticks per item hop (60 / transportTime items/sec).
+        // BufferedItemBridge: buffer uses speed ticks (default 40).
+        try{
+            if(build instanceof BufferedItemBridge.BufferedItemBridgeBuild){
+                var speed = 40;
+                try{ if(build.block != null && build.block.speed > 0) speed = build.block.speed; }catch(eSp){}
+                return Math.max(8, speed / bridgeTimeScale(build));
             }
-            if(item == null) return;
-            var x1 = build.x, y1 = build.y, x2 = other.drawx(), y2 = other.drawy();
-            var dst = Math.max(1, Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
-            var count = Math.max(2, Math.floor(dst / 7));
-            var phase = (Time.time / 22) % 1;
-            for(var i = 1; i <= count; i++){
-                var f = ((i / (count + 1)) + phase) % 1;
-                drawItemIcon(item, x1 + (x2 - x1) * f, y1 + (y2 - y1) * f, 5.8, 0.62);
+        }catch(eBuf){}
+        var t = 0;
+        try{
+            if(build.block != null && build.block.transportTime > 0) t = build.block.transportTime;
+        }catch(eT){}
+        if(t <= 0) t = 10; // phase conveyor default-ish fallback
+        return Math.max(4, t / bridgeTimeScale(build));
+    }
+
+    function bridgeIsMoving(build, otherBuild){
+        // Never animate when there is nowhere to go / nothing to move.
+        try{
+            if(build.efficiency != null && build.efficiency <= 0.001) return false;
+        }catch(eEf){}
+        try{
+            if(build.power != null && build.power.status != null && build.power.status <= 0.001){
+                // powered bridges (phase) with no power do not transport
+                try{ if(build.block != null && build.block.hasPower) return false; }catch(eHp){}
+            }
+        }catch(ePow){}
+
+        var total = 0;
+        try{ if(build.items != null) total = build.items.total(); }catch(eItems){}
+
+        var hasBuffered = false;
+        try{
+            if(build.buffer != null){
+                // ItemBuffer typically tracks index/size of queued items.
+                try{ if(build.buffer.index > 0) hasBuffered = true; }catch(eIdx){}
+                try{ if(!hasBuffered && build.buffer.length > 0) hasBuffered = true; }catch(eLen){}
+                try{ if(!hasBuffered && build.buffer.size > 0) hasBuffered = true; }catch(eSize){}
+            }
+        }catch(eBuf){}
+
+        if(total <= 0 && !hasBuffered) return false;
+
+        // Destination must exist and be able to accept something eventually.
+        if(otherBuild == null) return false;
+        try{
+            // If destination inventory is completely full for every item we hold, skip motion.
+            if(build.items != null && total > 0){
+                var anyAccept = false;
+                var held = [];
+                try{
+                    build.items.each(new JavaAdapter(Packages.arc.func.Cons2, {
+                        get: function(item, amount){
+                            if(item != null && amount > 0) held.push(item);
+                        }
+                    }));
+                }catch(eEach){
+                    try{ held.push(build.items.first()); }catch(eFirst){}
+                }
+                for(var hi = 0; hi < held.length; hi++){
+                    try{
+                        if(otherBuild.acceptItem(build, held[hi])){ anyAccept = true; break; }
+                    }catch(eAcc){
+                        anyAccept = true; // if API throws, don't block visuals
+                        break;
+                    }
+                }
+                if(held.length > 0 && !anyAccept) return false;
+            }
+        }catch(eAcceptAll){}
+
+        // wasMoved/moved flags from ItemBridgeBuild when available.
+        try{ if(build.wasMoved === false && build.moved === false && total <= 0) return false; }catch(eMv){}
+        return true;
+    }
+
+    function bridgeFlowItems(build){
+        // Collect actual items being transported: inventory + buffer head if present.
+        var out = [];
+        try{
+            if(build.buffer != null){
+                // Try common ItemBuffer layouts used across versions.
+                try{
+                    // buffer.items / buffer.buffer arrays of Item or packed ints
+                    var arr = null;
+                    try{ arr = build.buffer.buffer; }catch(eB1){}
+                    if(arr == null){ try{ arr = build.buffer.items; }catch(eB2){} }
+                    if(arr != null){
+                        var n = 0;
+                        try{ n = build.buffer.index; }catch(eI){ try{ n = arr.length; }catch(eL){ n = 0; } }
+                        for(var bi = 0; bi < n && bi < 8; bi++){
+                            var raw = arr[bi];
+                            var it = null;
+                            if(raw == null) continue;
+                            try{
+                                if(typeof raw === "number") it = Vars.content.item(raw);
+                                else if(raw.item != null) it = raw.item;
+                                else it = raw;
+                            }catch(eRaw){}
+                            if(it != null) out.push(it);
+                        }
+                    }
+                }catch(eBufRead){}
+            }
+        }catch(eBuf){}
+
+        try{
+            if(build.items != null && build.items.total() > 0){
+                var added = 0;
+                try{
+                    build.items.each(new JavaAdapter(Packages.arc.func.Cons2, {
+                        get: function(item, amount){
+                            if(item == null || amount <= 0 || added >= 6) return;
+                            // Represent stacks with up to 2 icons each, max 6 total.
+                            var reps = Math.min(2, amount);
+                            for(var r = 0; r < reps && added < 6; r++){
+                                out.push(item);
+                                added++;
+                            }
+                        }
+                    }));
+                }catch(eEach2){
+                    try{
+                        var first = build.items.first();
+                        if(first != null) out.push(first);
+                    }catch(eFirst2){}
+                }
+            }
+        }catch(eItems2){}
+
+        return out;
+    }
+
+    function drawBridgeFlow(build, bounds){
+        try{
+            if(build.link == null || build.link === -1) return;
+            var otherTile = Vars.world.tile(build.link);
+            if(otherTile == null || otherTile.build == null) return;
+
+            // Only the source side of a link draws the path (avoid double work).
+            // ItemBridge uses relative config; both ends exist but only one has link pointing to the other.
+            var x1 = build.x, y1 = build.y;
+            var x2 = otherTile.drawx(), y2 = otherTile.drawy();
+            if(!bridgeSegmentInCamera(x1, y1, x2, y2, bounds)) return;
+
+            if(!bridgeIsMoving(build, otherTile.build)) return;
+
+            var items = bridgeFlowItems(build);
+            if(items.length === 0) return;
+
+            var period = bridgeTransportPeriod(build); // ticks per hop
+            // Progress 0..1 for the current hop, based on transportCounter when available.
+            var progress = 0;
+            try{
+                if(build.transportCounter != null && period > 0){
+                    progress = Mathf.clamp(build.transportCounter / period, 0, 0.999);
+                }else{
+                    progress = (Time.time % period) / period;
+                }
+            }catch(eProg){
+                progress = (Time.time % period) / period;
+            }
+
+            // One moving icon per real item (capped). Stagger slightly by index, not fake density by distance.
+            var maxIcons = Math.min(4, items.length);
+            for(var i = 0; i < maxIcons; i++){
+                var item = items[i];
+                if(item == null) continue;
+                // Items queue: older ones closer to destination.
+                var f = progress - (i / Math.max(1, maxIcons)) * 0.85;
+                if(f < 0) f += 1;
+                if(f > 1) f -= 1;
+                // Ease a little so it doesn't look linear-laser fast.
+                var eased = f * f * (3 - 2 * f);
+                var ix = x1 + (x2 - x1) * eased;
+                var iy = y1 + (y2 - y1) * eased;
+                if(!inCamera(ix, iy, bounds)) continue;
+                drawItemIcon(item, ix, iy, 5.6, 0.78);
             }
         }catch(e){}
     }
@@ -2684,15 +2879,39 @@ var ModEngineRuntime = (function(){
     function drawTransportOverlay(){
         if(ui == null || ui.state == null || !ui.state.transportOverlay) return;
         try{
-            Groups.build.each(cons(function(build){
+            var bounds = camBounds();
+            // Prefer team building iterator when available (much smaller than all map builds).
+            var drew = 0;
+            var maxDraw = 1400; // hard safety cap per frame for huge maps
+            function consider(build){
+                if(drew >= maxDraw) return;
                 try{
                     if(build == null || build.block == null) return;
-                    if(build instanceof Conveyor.ConveyorBuild) drawConveyorFlow(build);
-                    else if(build instanceof Router.RouterBuild) drawRouterFlow(build);
-                    else if(build instanceof Junction.JunctionBuild) drawJunctionFlow(build);
-                    else if(build instanceof ItemBridge.ItemBridgeBuild || build instanceof BufferedItemBridge.BufferedItemBridgeBuild) drawBridgeFlow(build);
+                    // Camera cull for point buildings; bridges checked inside drawer.
+                    var isBridge = false;
+                    try{
+                        isBridge = (build instanceof ItemBridge.ItemBridgeBuild) || (build instanceof BufferedItemBridge.BufferedItemBridgeBuild);
+                    }catch(eType){}
+                    if(!isBridge && !inCamera(build.x, build.y, bounds)) return;
+
+                    if(build instanceof Conveyor.ConveyorBuild){
+                        drawConveyorFlow(build);
+                        drew++;
+                    }else if(build instanceof Router.RouterBuild){
+                        drawRouterFlow(build);
+                        drew++;
+                    }else if(build instanceof Junction.JunctionBuild){
+                        drawJunctionFlow(build);
+                        drew++;
+                    }else if(isBridge){
+                        drawBridgeFlow(build, bounds);
+                        drew++;
+                    }
                 }catch(eBuild){}
-            }));
+            }
+
+            // Groups.build is global; still cull heavily by camera.
+            Groups.build.each(cons(consider));
         }catch(e){}
     }
 
