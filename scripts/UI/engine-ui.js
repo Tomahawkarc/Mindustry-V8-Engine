@@ -188,6 +188,16 @@ var ModEngineUI = (function(){
     var buildOverviewCache = null;
     var buildOverviewCacheTime = -9999;
 
+    function copyColor(src, alpha){
+        // Never Draw.color(theme.*) then Draw.alpha() on the same Color instance —
+        // Arc mutates the Color object in-place, which permanently darkens shared theme colors
+        // after the first button draw (especially primary/action checked styles).
+        var c = src == null ? theme.text : src;
+        var out = new Color(c.r, c.g, c.b, c.a);
+        if(alpha != null) out.a = alpha;
+        return out;
+    }
+
     function makeDrawable(fill, stroke, strokeWidth, accent, brackets){
         var background = fill;
         var border = stroke;
@@ -197,24 +207,26 @@ var ModEngineUI = (function(){
 
         return extend(BaseDrawable, {
             draw: function(x, y, width, height){
-                Draw.color(background);
-                try{ Draw.alpha(background.a * Math.max(0.35, Math.min(1, state.menuOpacity))); }catch(eOpacity){}
+                var opacity = 1;
+                try{ opacity = Math.max(0.55, Math.min(1, state.menuOpacity)); }catch(eOpacity){ opacity = 1; }
+                Draw.color(copyColor(background, (background == null ? 1 : background.a) * opacity));
                 Fill.rect(x + width / 2, y + height / 2, width, height);
 
                 if(lineWidth > 0){
-                    Draw.color(border);
+                    Draw.color(copyColor(border, (border == null ? 1 : border.a) * opacity));
                     Lines.stroke(lineWidth);
                     Lines.rect(x + lineWidth / 2, y + lineWidth / 2, width - lineWidth, height - lineWidth);
                 }
 
                 if(accentColor != null){
-                    Draw.color(accentColor);
+                    Draw.color(copyColor(accentColor, (accentColor.a == null ? 1 : accentColor.a) * opacity));
                     Fill.rect(x + width / 2, y + height - 1.5, width, 3);
                 }
 
                 if(drawBrackets){
                     var size = Math.min(18, Math.min(width, height) * 0.22);
-                    Draw.color(accentColor == null ? border : accentColor);
+                    var edge = accentColor == null ? border : accentColor;
+                    Draw.color(copyColor(edge, (edge == null ? 1 : edge.a) * opacity));
                     Lines.stroke(2);
                     Lines.line(x, y + height, x + size, y + height);
                     Lines.line(x, y + height, x, y + height - size);
@@ -319,12 +331,18 @@ var ModEngineUI = (function(){
         style.up = up;
         style.over = over;
         style.down = down;
-        style.checked = checked;
+        // Keep checked drawable bright (same family as up) so toggled buttons don't look permanently dimmed.
+        style.checked = checked || up;
+        style.checkedOver = over;
+        try{ style.checkedDown = down; }catch(eCheckedDown){}
+        style.disabled = up;
         style.font = font;
-        style.fontColor = fontColor;
-        style.overFontColor = theme.gold;
-        style.downFontColor = theme.cyan;
-        style.checkedFontColor = checkedColor || theme.gold;
+        // Clone colors so TextButton/Label style fields never share mutable theme Color refs.
+        style.fontColor = copyColor(fontColor, 1);
+        style.overFontColor = copyColor(theme.gold, 1);
+        style.downFontColor = copyColor(theme.cyan, 1);
+        style.checkedFontColor = copyColor(checkedColor || theme.gold, 1);
+        style.disabledFontColor = copyColor(theme.dim, 1);
         return style;
     }
 
@@ -344,16 +362,21 @@ var ModEngineUI = (function(){
             navUp: makeDrawable(theme.side, theme.side, 0, null, false),
             navOver: makeDrawable(theme.panel2, theme.line, 1, null, false),
             navDown: makeDrawable(theme.panel3, theme.goldDark, 1, null, false),
-            navChecked: makeDrawable(theme.panel2, theme.goldDark, 1, theme.gold, false),
+            navChecked: makeDrawable(theme.panel2, theme.gold, 1, theme.gold, false),
             actionUp: makeDrawable(theme.panel3, theme.line, 1, null, false),
             actionOver: makeDrawable(theme.panel2, theme.goldDark, 1, null, false),
             actionDown: makeDrawable(theme.bg2, theme.cyanDark, 1, null, false),
+            // Checked action stays bright (panel2 + gold edge) instead of reusing over/down dim states.
+            actionChecked: makeDrawable(theme.panel2, theme.gold, 1, theme.gold, false),
             primaryUp: makeDrawable(theme.gold, theme.gold, 1, null, false),
             primaryOver: makeDrawable(theme.cyan, theme.gold, 1, null, false),
             primaryDown: makeDrawable(theme.goldDark, theme.goldDark, 1, null, false),
+            // Checked primary keeps the bright gold face (not dark goldDown).
+            primaryChecked: makeDrawable(theme.gold, theme.gold, 1, null, false),
             dangerUp: makeDrawable(theme.redDark, Color.valueOf("7d3340"), 1, null, false),
             dangerOver: makeDrawable(Color.valueOf("5a1825"), theme.red, 1, null, false),
             dangerDown: makeDrawable(Color.valueOf("250911"), theme.red, 1, null, false),
+            dangerChecked: makeDrawable(theme.redDark, theme.red, 1, null, false),
             tileUp: makeDrawable(theme.panel, theme.lineSoft, 1, null, false),
             tileOver: makeDrawable(theme.panel2, theme.line, 1, null, false),
             tileDown: makeDrawable(theme.black, theme.cyanDark, 1, null, false),
@@ -366,26 +389,31 @@ var ModEngineUI = (function(){
         navStyle.over = d.navOver;
         navStyle.down = d.navDown;
         navStyle.checked = d.navChecked;
+        try{ navStyle.checkedOver = d.navOver; }catch(eNav){}
 
         var tileStyle = new Button.ButtonStyle();
         tileStyle.up = d.tileUp;
         tileStyle.over = d.tileOver;
         tileStyle.down = d.tileDown;
         tileStyle.checked = d.tileChecked;
+        try{ tileStyle.checkedOver = d.tileOver; }catch(eTile){}
 
         var activeTileStyle = new Button.ButtonStyle();
         activeTileStyle.up = d.primaryUp;
         activeTileStyle.over = d.primaryOver;
         activeTileStyle.down = d.primaryDown;
-        activeTileStyle.checked = d.primaryUp;
+        activeTileStyle.checked = d.primaryChecked;
+        try{ activeTileStyle.checkedOver = d.primaryOver; }catch(eActive){}
 
         var iconStyle = new ImageButton.ImageButtonStyle(Styles.defaulti);
         iconStyle.up = d.actionUp;
         iconStyle.over = d.actionOver;
         iconStyle.down = d.actionDown;
-        iconStyle.imageUpColor = theme.muted;
-        iconStyle.imageOverColor = theme.gold;
-        iconStyle.imageDownColor = theme.cyan;
+        iconStyle.checked = d.actionChecked;
+        iconStyle.imageUpColor = copyColor(theme.muted, 1);
+        iconStyle.imageOverColor = copyColor(theme.gold, 1);
+        iconStyle.imageDownColor = copyColor(theme.cyan, 1);
+        iconStyle.imageCheckedColor = copyColor(theme.gold, 1);
 
         styles = {
             d: d,
@@ -393,17 +421,17 @@ var ModEngineUI = (function(){
             tile: tileStyle,
             activeTile: activeTileStyle,
             icon: iconStyle,
-            action: copyTextStyle(Styles.defaultt, d.actionUp, d.actionOver, d.actionDown, d.actionOver, Fonts.def, theme.text, theme.gold),
-            primary: copyTextStyle(Styles.defaultt, d.primaryUp, d.primaryOver, d.primaryDown, d.primaryDown, Fonts.def, theme.black, theme.black),
-            danger: copyTextStyle(Styles.defaultt, d.dangerUp, d.dangerOver, d.dangerDown, d.dangerDown, Fonts.def, theme.red, theme.red),
-            tab: copyTextStyle(Styles.defaultt, d.actionUp, d.actionOver, d.actionDown, d.primaryUp, Fonts.def, theme.muted, theme.black),
-            label: new Label.LabelStyle(Fonts.def, theme.text),
-            labelMuted: new Label.LabelStyle(Fonts.def, theme.muted),
-            labelDim: new Label.LabelStyle(Fonts.def, theme.dim),
-            labelGold: new Label.LabelStyle(Fonts.def, theme.gold),
-            labelCyan: new Label.LabelStyle(Fonts.def, theme.cyan),
-            labelRed: new Label.LabelStyle(Fonts.def, theme.red),
-            labelPrimary: new Label.LabelStyle(Fonts.def, theme.black),
+            action: copyTextStyle(Styles.defaultt, d.actionUp, d.actionOver, d.actionDown, d.actionChecked, Fonts.def, theme.text, theme.gold),
+            primary: copyTextStyle(Styles.defaultt, d.primaryUp, d.primaryOver, d.primaryDown, d.primaryChecked, Fonts.def, theme.black, theme.black),
+            danger: copyTextStyle(Styles.defaultt, d.dangerUp, d.dangerOver, d.dangerDown, d.dangerChecked, Fonts.def, theme.red, theme.red),
+            tab: copyTextStyle(Styles.defaultt, d.actionUp, d.actionOver, d.actionDown, d.primaryChecked, Fonts.def, theme.muted, theme.black),
+            label: new Label.LabelStyle(Fonts.def, copyColor(theme.text, 1)),
+            labelMuted: new Label.LabelStyle(Fonts.def, copyColor(theme.muted, 1)),
+            labelDim: new Label.LabelStyle(Fonts.def, copyColor(theme.dim, 1)),
+            labelGold: new Label.LabelStyle(Fonts.def, copyColor(theme.gold, 1)),
+            labelCyan: new Label.LabelStyle(Fonts.def, copyColor(theme.cyan, 1)),
+            labelRed: new Label.LabelStyle(Fonts.def, copyColor(theme.red, 1)),
+            labelPrimary: new Label.LabelStyle(Fonts.def, copyColor(theme.black, 1)),
             pane: Styles.noBarPane
         };
 
@@ -413,22 +441,28 @@ var ModEngineUI = (function(){
     function applyTheme(name){
         var palette = themePalettes[name] || themePalettes.yellow;
         state.themeName = themePalettes[name] == null ? "yellow" : name;
-        theme.gold.set(Color.valueOf(palette.primary));
-        theme.cyan.set(Color.valueOf(palette.secondary));
-        theme.goldDark.set(Color.valueOf(palette.primaryDark));
-        theme.cyanDark.set(Color.valueOf(palette.secondaryDark));
-        theme.muted.set(Color.valueOf(palette.muted));
-        theme.dim.set(theme.muted).mul(0.62);
+        // Rebuild every theme Color from scratch so previous Draw.alpha mutations cannot stick.
+        theme.gold = Color.valueOf(palette.primary);
+        theme.cyan = Color.valueOf(palette.secondary);
+        theme.goldDark = Color.valueOf(palette.primaryDark);
+        theme.cyanDark = Color.valueOf(palette.secondaryDark);
+        theme.muted = Color.valueOf(palette.muted);
+        theme.dim = Color.valueOf(palette.muted).mul(0.62);
         theme.dim.a = 1;
+        theme.red = Color.valueOf("ffb3ae");
+        theme.redDark = Color.valueOf("401019");
+        theme.green = Color.valueOf("31d17a");
+        theme.black = Color.valueOf("05090f");
+        theme.text = Color.valueOf("d8dde7");
         var tint = Color.valueOf(palette.primaryDark);
-        theme.bg.set(Color.valueOf("0b1118")).lerp(tint, 0.12);
-        theme.bg2.set(Color.valueOf("0f151d")).lerp(tint, 0.14);
-        theme.side.set(Color.valueOf("0c1219")).lerp(tint, 0.13);
-        theme.panel.set(Color.valueOf("121922")).lerp(tint, 0.14);
-        theme.panel2.set(Color.valueOf("171e28")).lerp(tint, 0.16);
-        theme.panel3.set(Color.valueOf("202833")).lerp(tint, 0.18);
-        theme.line.set(Color.valueOf("2c3542")).lerp(theme.gold, 0.12);
-        theme.lineSoft.set(Color.valueOf("202833")).lerp(tint, 0.16);
+        theme.bg = Color.valueOf("0b1118").lerp(tint, 0.12);
+        theme.bg2 = Color.valueOf("0f151d").lerp(tint, 0.14);
+        theme.side = Color.valueOf("0c1219").lerp(tint, 0.13);
+        theme.panel = Color.valueOf("121922").lerp(tint, 0.14);
+        theme.panel2 = Color.valueOf("171e28").lerp(tint, 0.16);
+        theme.panel3 = Color.valueOf("202833").lerp(tint, 0.18);
+        theme.line = Color.valueOf("2c3542").lerp(theme.gold, 0.12);
+        theme.lineSoft = Color.valueOf("202833").lerp(tint, 0.16);
         callHandler("theme", {primary: palette.primary, secondary: palette.secondary, primaryDark: palette.primaryDark, secondaryDark: palette.secondaryDark});
         styles = null;
         if(dialog != null && dialog.isShown()) refreshRoot();
@@ -537,7 +571,16 @@ var ModEngineUI = (function(){
 
     function textButton(text, style, action){
         var b = new TextButton(text, style || getStyles().action);
+        // Prevent sticky "checked/disabled" darkening on ordinary action buttons.
+        try{ b.setProgrammaticChangeEvents(false); }catch(eProg){}
+        try{ b.setDisabled(false); }catch(eDis){}
         b.clicked(run(action));
+        return b;
+    }
+
+    function toggleTextButton(text, style, checked, action){
+        var b = textButton(text, style, action);
+        try{ b.setChecked(!!checked); }catch(eCheck){}
         return b;
     }
 
@@ -1592,38 +1635,136 @@ var ModEngineUI = (function(){
         return total;
     }
 
+    function canUnitTypeMine(type){
+        if(type == null) return false;
+        try{
+            if(type.mineTier >= 0 && type.mineSpeed > 0) return true;
+        }catch(e){}
+        try{
+            // Some V8 / modded units expose mine ability only via commands list.
+            if(type.commands != null && Packages.mindustry.ai.UnitCommand != null){
+                if(type.commands.contains(Packages.mindustry.ai.UnitCommand.mineCommand)) return true;
+            }
+        }catch(e2){}
+        return false;
+    }
+
     function collectFleetMinerTypes(){
         var team = null;
         try{ team = Vars.player == null ? null : Vars.player.team(); }catch(e){}
         var groups = {};
         var order = [];
+
+        function considerUnit(unit){
+            try{
+                if(unit == null || unit.type == null) return;
+                if(team != null){
+                    var ut = null;
+                    try{ ut = unit.team(); }catch(eT){ try{ ut = unit.team; }catch(eT2){} }
+                    if(ut != null && ut != team) return;
+                }
+                if(!canUnitTypeMine(unit.type)) return;
+                var key = String(unit.type.name);
+                if(groups[key] == null){
+                    groups[key] = {type: unit.type, count: 0, mining: 0};
+                    order.push(key);
+                }
+                groups[key].count++;
+                var active = false;
+                try{ active = unit.mining(); }catch(eM){
+                    try{ active = unit.mineTile != null; }catch(eM2){
+                        try{ active = unit.mineTile() != null; }catch(eM3){}
+                    }
+                }
+                if(active) groups[key].mining++;
+            }catch(eInner){}
+        }
+
+        // 1) Preferred: team unit list
         try{
             if(team != null){
                 var data = team.data();
                 if(data != null && data.units != null){
                     var list = data.units;
                     for(var i = 0; i < list.size; i++){
-                        try{
-                            var unit = list.items[i];
-                            if(unit == null || unit.type == null || unit.type.mineTier < 0 || unit.type.mineSpeed <= 0) continue;
-                            var key = String(unit.type.name);
-                            if(groups[key] == null){
-                                groups[key] = {type: unit.type, count: 0, mining: 0};
-                                order.push(key);
-                            }
-                            groups[key].count++;
-                            var active = false;
-                            try{ active = unit.mining(); }catch(eM){
-                                try{ active = unit.mineTile() != null; }catch(eM2){}
-                            }
-                            if(active) groups[key].mining++;
-                        }catch(eInner){}
+                        considerUnit(list.items[i]);
                     }
                 }
             }
         }catch(e){}
+
+        // 2) PC/desktop fallback: Groups.unit is more reliable when team.data().units is empty/stale
+        //    (command mode / fog / certain V8 builds).
+        if(order.length === 0){
+            try{
+                Groups.unit.each(cons(function(unit){
+                    considerUnit(unit);
+                }));
+            }catch(eGroups){}
+        }
+
+        // 3) Still empty: offer mining-capable unit *types* from content so ore buttons remain available.
+        //    Runtime will no-op assign until units are spawned.
+        if(order.length === 0){
+            try{
+                eachSeq(Vars.content.units(), function(type){
+                    try{
+                        if(!visibleContent(type)) return;
+                        if(!canUnitTypeMine(type)) return;
+                        var key = String(type.name);
+                        if(groups[key] != null) return;
+                        groups[key] = {type: type, count: 0, mining: 0, virtual: true};
+                        order.push(key);
+                    }catch(eType){}
+                });
+            }catch(eContent){}
+        }
+
         var result = [];
-        for(var i = 0; i < order.length; i++) result.push(groups[order[i]]);
+        for(var j = 0; j < order.length; j++) result.push(groups[order[j]]);
+        result.sort(function(a, b){
+            if(b.count !== a.count) return b.count - a.count;
+            var an = String(a.type.localizedName || a.type.name);
+            var bn = String(b.type.localizedName || b.type.name);
+            return an < bn ? -1 : (an > bn ? 1 : 0);
+        });
+        return result;
+    }
+
+    function collectMineableItems(){
+        var result = [];
+        var seen = {};
+        function pushItem(item){
+            if(item == null) return;
+            try{
+                var key = String(item.name);
+                if(seen[key]) return;
+                // Skip non-mineable liquids-as-items and hidden content.
+                if(!visibleContent(item)) return;
+                try{ if(item.hardness == null) return; }catch(eH){}
+                seen[key] = true;
+                result.push(item);
+            }catch(e){}
+        }
+
+        // Preferred base ores first (stable order for UI).
+        var preferred = ["copper", "lead", "coal", "scrap", "sand", "titanium", "thorium", "beryllium", "tungsten", "oxide", "carbide"];
+        for(var p = 0; p < preferred.length; p++){
+            try{ pushItem(Vars.content.item(preferred[p])); }catch(ePref){
+                pushItem(findItemByName(preferred[p]));
+            }
+        }
+
+        // Then any other visible items that look mineable (hardness >= 0).
+        try{
+            eachSeq(Vars.content.items(), function(item){
+                try{
+                    if(item.hardness == null || item.hardness < 0) return;
+                    pushItem(item);
+                }catch(eItem){}
+            });
+        }catch(eAll){}
+
         return result;
     }
 
@@ -4348,7 +4489,14 @@ var ModEngineUI = (function(){
         var headText = new Table();
         headText.left();
         headText.add(label(String(entry.type.localizedName).toUpperCase(), s.labelGold, 0.86)).left().row();
-        headText.add(label(entry.count + " UNITS  *  " + entry.mining + " MINING", s.labelMuted, 0.68)).left().padTop(gap.xs);
+        var countLabel = entry.virtual
+            ? "NO UNITS ON MAP  *  READY TO ASSIGN"
+            : (entry.count + " UNITS  *  " + entry.mining + " MINING");
+        headText.add(label(countLabel, s.labelMuted, 0.68)).left().padTop(gap.xs);
+        try{
+            var tier = entry.type.mineTier;
+            headText.add(label("MINE TIER " + tier, s.labelDim, 0.62)).left().padTop(gap.xs);
+        }catch(eTier){}
         head.add(headText).growX();
         p.add(head).growX().row();
 
@@ -4356,14 +4504,26 @@ var ModEngineUI = (function(){
         if(!Array.isArray(currentAssignment)) currentAssignment = currentAssignment ? [currentAssignment] : [];
         var assignRow = new Table();
         assignRow.left();
+        var drawn = 0;
         for(var i = 0; i < resourceOptions.length; i++){
             (function(item, idx){
                 if(item == null) return;
                 var itemName = String(item.name);
                 var selected = currentAssignment.indexOf(itemName) !== -1;
-                var b = new Button(s.tile);
-                b.setChecked(selected);
+                var tooHard = false;
+                try{ tooHard = item.hardness > entry.type.mineTier; }catch(eHard){}
+
+                // Desktop-friendly TextButton tiles (more reliable hit targets than nested Button+Table).
+                var caption = String(item.localizedName || item.name).toUpperCase();
+                if(caption.length > 8) caption = caption.substring(0, 7) + ".";
+                var style = selected ? s.primary : (tooHard ? s.action : s.action);
+                var b = new TextButton(caption, style);
+                try{ b.setChecked(selected); }catch(eChk){}
+                try{ b.getLabel().setFontScale(0.68); }catch(eScale){}
                 b.clicked(run(function(){
+                    if(tooHard && !selected){
+                        // Still allow click so runtime can show "tier too low" toast consistently.
+                    }
                     var list = state.fleetAssignments[typeName];
                     if(!Array.isArray(list)) list = list ? [list] : [];
                     var pos = list.indexOf(itemName);
@@ -4381,23 +4541,32 @@ var ModEngineUI = (function(){
                     }
                     rebuildContent();
                 }));
-                var iconBack = new Table();
-                iconBack.background(selected ? s.d.panelCyan : s.d.panelDark);
-                iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(28).color(contentColor(item, theme.cyan));
-                b.add(iconBack).size(46);
-                assignRow.add(b).size(50).padRight(gap.xs).padTop(gap.xs);
-                if((idx + 1) % 5 === 0) assignRow.row();
+
+                // Icon + text stack for better PC readability.
+                try{
+                    b.clearChildren();
+                    b.top();
+                    var iconBack = new Table();
+                    iconBack.background(selected ? s.d.panelCyan : s.d.panelDark);
+                    iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(26).color(contentColor(item, theme.cyan));
+                    b.add(iconBack).size(42).padTop(4).row();
+                    b.add(label(caption, selected ? s.labelCyan : (tooHard ? s.labelDim : s.labelMuted), 0.62)).padBottom(4);
+                }catch(eChildren){}
+
+                assignRow.add(b).size(74, 70).padRight(gap.xs).padTop(gap.xs);
+                drawn++;
+                if(drawn % 4 === 0) assignRow.row();
             })(resourceOptions[i], i);
         }
-        var clearBtn = textButton("X", s.danger, function(){
+        var clearBtn = textButton("CLR", s.danger, function(){
             delete state.fleetAssignments[typeName];
             callHandler("command", {command: "mining:fleetClear", unitType: typeName});
             rebuildContent();
         });
-        assignRow.add(clearBtn).size(50).padTop(gap.xs);
-        p.add(assignRow).left().padTop(gap.md).row();
+        assignRow.add(clearBtn).size(74, 70).padTop(gap.xs);
+        p.add(assignRow).left().growX().padTop(gap.md).row();
 
-        var statusText = currentAssignment.length > 0 ? ("TARGET: " + currentAssignment.map(function(n){ return n.toUpperCase(); }).join(", ")) : "NO_ASSIGNMENT";
+        var statusText = currentAssignment.length > 0 ? ("TARGET: " + currentAssignment.map(function(n){ return n.toUpperCase(); }).join(", ")) : "NO_ASSIGNMENT — click an ore";
         p.add(label(statusText, currentAssignment.length > 0 ? s.labelCyan : s.labelDim, 0.7)).left().padTop(gap.sm);
         return p;
     }
@@ -4647,7 +4816,7 @@ var ModEngineUI = (function(){
     function buildMining(parent){
         var s = getStyles();
         parent.add(label("Extraction Protocol", s.label, 1.72)).left().row();
-        parent.add(wrappedLabel("PROTOCOL: FLEET-WIDE RESOURCE HARVESTING. ASSIGN EACH MINING-CAPABLE UNIT TYPE ON THE MAP TO A TARGET ORE.", s.labelDim, 0.78)).width(textBlockWidth(900)).left().padTop(gap.sm).row();
+        parent.add(wrappedLabel("PROTOCOL: FLEET-WIDE RESOURCE HARVESTING. CLICK AN ORE BUTTON ON A UNIT CARD TO ASSIGN MINING TARGETS (PC + MOBILE).", s.labelDim, 0.78)).width(textBlockWidth(900)).left().padTop(gap.sm).row();
 
         var split = new Table();
         split.top().left();
@@ -4657,19 +4826,17 @@ var ModEngineUI = (function(){
 
         var drill = panel(s.d.panelCyan, gap.xl);
         drill.add(label("DRILL_OPTIMIZATION", s.label, 0.98)).left().row();
-        var boost1 = textButton(state.miningDrillBoost ? "BUILD_SPEED_MULTIPLIER: ACTIVE" : "BUILD_SPEED_MULTIPLIER: INACTIVE", state.miningDrillBoost ? s.primary : s.action, function(){
+        var boost1 = toggleTextButton(state.miningDrillBoost ? "BUILD_SPEED_MULTIPLIER: ACTIVE" : "BUILD_SPEED_MULTIPLIER: INACTIVE", state.miningDrillBoost ? s.primary : s.action, state.miningDrillBoost, function(){
             state.miningDrillBoost = !state.miningDrillBoost;
             callHandler("command", {command: "mining:buildBoost", value: state.miningDrillBoost});
             rebuildContent();
         });
-        boost1.setChecked(state.miningDrillBoost);
         drill.add(boost1).growX().height(56).padTop(gap.xl).row();
-        var boost2 = textButton(state.miningEfficiencyBoost ? "EXTRACTION_EFFICIENCY: ACTIVE" : "EXTRACTION_EFFICIENCY: INACTIVE", state.miningEfficiencyBoost ? s.primary : s.action, function(){
+        var boost2 = toggleTextButton(state.miningEfficiencyBoost ? "EXTRACTION_EFFICIENCY: ACTIVE" : "EXTRACTION_EFFICIENCY: INACTIVE", state.miningEfficiencyBoost ? s.primary : s.action, state.miningEfficiencyBoost, function(){
             state.miningEfficiencyBoost = !state.miningEfficiencyBoost;
             callHandler("command", {command: "mining:efficiency", value: state.miningEfficiencyBoost});
             rebuildContent();
         });
-        boost2.setChecked(state.miningEfficiencyBoost);
         drill.add(boost2).growX().height(56).padTop(gap.md).row();
         drill.add(liveSliderBlock("GLOBAL_MINE_SPEED", 1, 12, 0.1, state.miningSpeed, function(v){ return "x" + v.toFixed(1); }, "", "", "", theme.cyan, function(v){
             state.miningSpeed = v;
@@ -4677,18 +4844,61 @@ var ModEngineUI = (function(){
         })).growX().padTop(gap.lg);
         left.add(drill).growX().row();
 
+        // Player-unit quick mining (works even when no fleet is present).
+        var pilot = panel(s.d.panelGold, gap.lg);
+        pilot.add(label("CONTROLLED UNIT MINING", s.labelGold, 0.9)).left().row();
+        pilot.add(wrappedLabel("Assign ore to the unit you currently control. Useful on PC when command-mode fleet cards are empty.", s.labelMuted, 0.78)).growX().padTop(gap.sm).row();
+        var pilotStatus = playerMiningStatus();
+        pilot.add(label("UNIT: " + pilotStatus.name + (pilotStatus.active ? "  *  MINING" : "  *  IDLE"), pilotStatus.active ? s.labelCyan : s.labelDim, 0.72)).left().padTop(gap.md).row();
+
+        var resourceOptions = collectMineableItems();
+        var pilotRow = new Table();
+        pilotRow.left();
+        for(var pi = 0; pi < resourceOptions.length; pi++){
+            (function(item, idx){
+                if(item == null) return;
+                var selected = state.selectedMiningTarget === String(item.name);
+                var caption = String(item.localizedName || item.name).toUpperCase();
+                if(caption.length > 9) caption = caption.substring(0, 8) + ".";
+                var btn = toggleTextButton(caption, selected ? s.primary : s.action, selected, function(){
+                    state.selectedMiningTarget = String(item.name);
+                    callHandler("command", {command: "mining:priority:" + item.name});
+                    callHandler("command", {command: "mining:applyGlobalBuffs"});
+                    rebuildContent();
+                });
+                try{ btn.getLabel().setFontScale(0.7); }catch(eScale){}
+                pilotRow.add(btn).height(44).minWidth(96).padRight(gap.xs).padTop(gap.xs);
+                if((idx + 1) % (state.compact ? 2 : 3) === 0) pilotRow.row();
+            })(resourceOptions[pi], pi);
+        }
+        pilot.add(pilotRow).growX().padTop(gap.md).row();
+        var pilotActions = new Table();
+        pilotActions.left();
+        pilotActions.add(textButton("START / RETARGET", s.primary, function(){
+            callHandler("command", {command: "mining:applyGlobalBuffs"});
+            rebuildContent();
+        })).height(46).growX().padRight(gap.sm);
+        pilotActions.add(textButton("STOP", s.danger, function(){
+            callHandler("command", {command: "mining:stopProtocol"});
+            rebuildContent();
+        })).height(46).minWidth(110);
+        pilot.add(pilotActions).growX().padTop(gap.md);
+        left.add(pilot).growX().padTop(gap.lg).row();
+
         var fleetTypes = collectFleetMinerTypes();
         var totalMiners = 0;
         var totalActive = 0;
+        var realTypes = 0;
         for(var ti = 0; ti < fleetTypes.length; ti++){
             totalMiners += fleetTypes[ti].count;
             totalActive += fleetTypes[ti].mining;
+            if(!fleetTypes[ti].virtual) realTypes++;
         }
 
         var summary = panel(s.d.panel, gap.lg);
         summary.add(label("FLEET_OVERVIEW", s.labelGold, 0.82)).left().row();
         var summaryRow = new Table();
-        var minerCard = summaryCard("MINER_TYPES", String(fleetTypes.length), s.label, s.d.panel);
+        var minerCard = summaryCard("MINER_TYPES", String(realTypes > 0 ? realTypes : fleetTypes.length), s.label, s.d.panel);
         var activeCard = summaryCard("UNITS_MINING", totalActive + " / " + totalMiners, s.label, s.d.panel);
         if(state.compact){
             summaryRow.add(minerCard).growX().height(90).row();
@@ -4703,27 +4913,20 @@ var ModEngineUI = (function(){
         var right = new Table();
         right.top().left();
         var fleetPanel = panel(s.d.panelCyan, gap.xl);
-        fleetPanel.add(sectionHeader("MINING FLEET", "TAP AN ORE ICON TO ASSIGN", getIcon("pick", "hammer"))).growX().row();
-
-        var resourceOptions = [
-            findItemByName("copper"),
-            findItemByName("lead"),
-            findItemByName("coal"),
-            findItemByName("scrap"),
-            findItemByName("titanium"),
-            findItemByName("thorium"),
-            findItemByName("sand")
-        ];
+        fleetPanel.add(sectionHeader("MINING FLEET", "CLICK ORE TO ASSIGN", getIcon("pick", "hammer"))).growX().row();
+        fleetPanel.add(wrappedLabel("Each card lists ores the unit tier can request. On desktop, prefer the text/ore buttons below — they use larger hit targets.", s.labelMuted, 0.78)).growX().padTop(gap.sm).row();
 
         if(fleetTypes.length === 0){
-            fleetPanel.add(wrappedLabel("No mining-capable units detected on the map. Spawn or build units with mining ability (e.g. Mono, Poly, Mega) to assign extraction targets.", s.labelMuted, 0.86)).growX().padTop(gap.lg);
+            fleetPanel.add(wrappedLabel("No mining-capable unit types found. Spawn Mono/Poly/Mega (or any unit with mineTier >= 0).", s.labelMuted, 0.86)).growX().padTop(gap.lg);
         }else{
             var fleetList = new Table();
             fleetList.top().left();
-            var fleetCols = state.compact ? 1 : (ArcCore.graphics.getWidth() > 1700 ? 2 : 1);
+            // Desktop: always 1 column so ore grids stay fully visible and clickable.
+            var fleetCols = 1;
             for(var fi = 0; fi < fleetTypes.length; fi++){
-                fleetList.add(fleetMinerCard(fleetTypes[fi], resourceOptions)).growX().minWidth(state.compact ? 0 : 340).top().padRight(gap.md).padBottom(gap.md);
-                if((fi + 1) % fleetCols === 0) fleetList.row();
+                // Skip pure virtual catalog spam if we already have live units.
+                if(fleetTypes[fi].virtual && realTypes > 0) continue;
+                fleetList.add(fleetMinerCard(fleetTypes[fi], resourceOptions)).growX().minWidth(state.compact ? 0 : 420).top().padRight(gap.md).padBottom(gap.md).row();
             }
             var fleetPane = new ScrollPane(fleetList, getStyles().pane);
             fleetPane.setScrollingDisabled(true, false);
@@ -4731,7 +4934,7 @@ var ModEngineUI = (function(){
                 fleetPane.setFadeScrollBars(false);
                 fleetPane.setOverscroll(false, false);
             }catch(ePane){}
-            fleetPanel.add(fleetPane).growX().height(state.compact ? 460 : 560).padTop(gap.lg);
+            fleetPanel.add(fleetPane).growX().height(state.compact ? 520 : 640).padTop(gap.lg);
         }
         right.add(fleetPanel).growX().row();
 
@@ -4743,7 +4946,7 @@ var ModEngineUI = (function(){
             split.add(right).growX().padTop(gap.lg);
         }else{
             split.add(left).growX().minWidth(340).top().padRight(gap.xl);
-            split.add(right).growX().minWidth(420).top();
+            split.add(right).growX().minWidth(460).top();
         }
         parent.add(split).growX().padTop(gap.xl).row();
     }
@@ -4804,20 +5007,18 @@ var ModEngineUI = (function(){
 
         var overlay = panel(s.d.panelStrong, gap.lg);
         overlay.add(sectionHeader("MAP OVERLAY", "LIVE RANGE CIRCLES ON WORLD", getIcon("eye", "zoom"))).growX().row();
-        overlay.add(wrappedLabel("Draws range circles directly on the map for quick visual reference while playing.", s.labelMuted, 0.8)).growX().padTop(gap.sm).row();
+        overlay.add(wrappedLabel("Draws range zones on the map with Mindustry-style animated shield union (overlaps do not stack).", s.labelMuted, 0.8)).growX().padTop(gap.sm).row();
         var toggleRow = new Table();
         toggleRow.left();
-        var turretToggle = textButton(state.showTurretRadii ? "TURRET RADII: ON" : "TURRET RADII: OFF", state.showTurretRadii ? s.primary : s.action, function(){
+        var turretToggle = toggleTextButton(state.showTurretRadii ? "TURRET RADII: ON" : "TURRET RADII: OFF", state.showTurretRadii ? s.primary : s.action, state.showTurretRadii, function(){
             callHandler("command", {command: "radius:toggleTurrets"});
             rebuildContent();
         });
-        turretToggle.setChecked(state.showTurretRadii);
         toggleRow.add(turretToggle).height(50).growX().padRight(gap.md);
-        var unitToggle = textButton(state.showUnitRadii ? "UNIT RADII: ON" : "UNIT RADII: OFF", state.showUnitRadii ? s.primary : s.action, function(){
+        var unitToggle = toggleTextButton(state.showUnitRadii ? "UNIT RADII: ON" : "UNIT RADII: OFF", state.showUnitRadii ? s.primary : s.action, state.showUnitRadii, function(){
             callHandler("command", {command: "radius:toggleUnits"});
             rebuildContent();
         });
-        unitToggle.setChecked(state.showUnitRadii);
         toggleRow.add(unitToggle).height(50).growX();
         overlay.add(toggleRow).growX().padTop(gap.md);
         parent.add(overlay).growX().padTop(gap.lg).row();
