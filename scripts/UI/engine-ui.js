@@ -80,6 +80,8 @@ var ModEngineUI = (function(){
         navMode: "all",
         tier: 1,
         amount: 1000,
+        quickItemAmount: 1000,
+        quickItemSelection: {},
         waveIndex: 156,
         autoWave: false,
         wavePreviewPage: 0,
@@ -2306,6 +2308,126 @@ var ModEngineUI = (function(){
         mods.setChecked(state.itemContentMode === "mods");
         controls.add(mods).height(42).minWidth(180);
         return controls;
+    }
+
+    function showQuickItemsDialog(){
+        var s = getStyles();
+        var d = new BaseDialog("");
+        try{ d.titleTable.clear(); }catch(eTitle){}
+        d.cont.clear();
+        d.buttons.clear();
+        d.addCloseListener();
+
+        var body = panel(s.d.panelStrong, gap.xl);
+        body.add(sectionHeader("QUICK ITEM INJECTOR", "CORE STORAGE", getIcon("box", "database"))).growX().row();
+        body.add(wrappedLabel("Select one or more resources, set the amount added per resource, then inject the batch into your main core.", s.labelMuted, 0.82)).width(textBlockWidth(720)).left().padTop(gap.md).row();
+
+        var items = [];
+        eachSeq(Vars.content.items(), function(item){
+            try{ if(item != null && visibleContent(item)) items.push(item); }catch(eItem){}
+        });
+
+        var selection = state.quickItemSelection;
+        if(selection == null || typeof selection !== "object") selection = state.quickItemSelection = {};
+        var buttons = [];
+        var selectedLabel = label("0 SELECTED", s.labelCyan, 0.78);
+
+        function isSelected(item){
+            try{ return selection[String(item.name)] === true; }catch(e){ return false; }
+        }
+
+        function selectedItems(){
+            var result = [];
+            for(var i = 0; i < items.length; i++) if(isSelected(items[i])) result.push(items[i]);
+            return result;
+        }
+
+        function refreshSelection(){
+            var selected = selectedItems();
+            selectedLabel.setText(selected.length + " SELECTED");
+            for(var i = 0; i < buttons.length; i++){
+                var active = isSelected(buttons[i].item);
+                try{ buttons[i].button.setStyle(active ? s.activeTile : s.tile); }catch(eStyle){}
+                try{ buttons[i].button.setChecked(active); }catch(eCheck){}
+            }
+        }
+
+        var controls = new Table();
+        controls.left();
+        controls.add(textButton("SELECT ALL", s.action, function(){
+            for(var i = 0; i < items.length; i++) selection[String(items[i].name)] = true;
+            refreshSelection();
+        })).height(44).minWidth(150).padRight(gap.sm);
+        controls.add(textButton("CLEAR", s.action, function(){
+            state.quickItemSelection = selection = {};
+            refreshSelection();
+        })).height(44).minWidth(110).padRight(gap.lg);
+        controls.add(selectedLabel).left().growX();
+
+        var amountLabel = label("AMOUNT PER ITEM", s.labelMuted, 0.72);
+        controls.add(amountLabel).right().padRight(gap.sm);
+        var amountField = inlineNumberField(state.quickItemAmount, 1, 999999, s.labelCyan.fontColor, function(num){
+            state.quickItemAmount = num;
+        });
+        controls.add(amountField).width(120).height(44);
+        body.add(controls).growX().padTop(gap.lg).row();
+
+        var presets = new Table();
+        presets.left();
+        var presetValues = [100, 1000, 10000, 999999];
+        for(var pi = 0; pi < presetValues.length; pi++){
+            (function(value){
+                presets.add(textButton(value >= 999999 ? "MAX" : ("x" + value), s.action, function(){
+                    state.quickItemAmount = value;
+                    amountField.setText(String(value));
+                })).height(38).minWidth(86).padRight(gap.sm);
+            })(presetValues[pi]);
+        }
+        body.add(presets).left().padTop(gap.sm).row();
+
+        var grid = new Table();
+        grid.left().top();
+        var cols = Math.max(4, Math.min(8, Math.floor((ArcCore.graphics.getWidth() - 160) / 112)));
+        for(var ii = 0; ii < items.length; ii++){
+            (function(item, index){
+                var button = new Button(isSelected(item) ? s.activeTile : s.tile);
+                button.top();
+                button.image(contentDrawable(item, getIcon("box", "database"))).size(34).color(contentColor(item, theme.cyan)).padTop(gap.sm).row();
+                button.add(wrappedLabel(String(item.localizedName).toUpperCase(), s.labelMuted, 0.56)).width(92).center().padTop(gap.xs);
+                button.setChecked(isSelected(item));
+                button.clicked(run(function(){
+                    var name = String(item.name);
+                    selection[name] = selection[name] !== true;
+                    refreshSelection();
+                }));
+                buttons.push({button: button, item: item});
+                grid.add(button).size(108, 84).padRight(gap.xs).padBottom(gap.xs);
+                if((index + 1) % cols === 0) grid.row();
+            })(items[ii], ii);
+        }
+
+        var itemPane = new ScrollPane(grid, s.pane);
+        itemPane.setScrollingDisabled(true, false);
+        try{ itemPane.setFadeScrollBars(false); itemPane.setOverscroll(false, false); }catch(ePane){}
+        body.add(itemPane).growX().height(Math.min(500, Math.max(260, ArcCore.graphics.getHeight() - 310))).padTop(gap.lg).row();
+
+        var actions = new Table();
+        actions.right();
+        actions.add(textButton("CANCEL", s.action, function(){ hideInstant(d); })).height(50).minWidth(150).padRight(gap.md);
+        actions.add(textButton("ADD SELECTED", s.primary, function(){
+            var selected = selectedItems();
+            if(selected.length === 0){
+                try{ Vars.ui.showInfoToast("SELECT AT LEAST ONE ITEM", 3); }catch(eToast){}
+                return;
+            }
+            callHandler("injectItems", {items: selected, amount: Math.max(1, Math.round(state.quickItemAmount))});
+            hideInstant(d);
+        })).height(50).minWidth(190);
+        body.add(actions).growX().padTop(gap.lg);
+
+        refreshSelection();
+        d.cont.add(body).width(Math.min(980, Math.max(520, ArcCore.graphics.getWidth() - 80))).height(Math.min(820, Math.max(540, ArcCore.graphics.getHeight() - 80)));
+        d.show();
     }
 
     function buildAmountControl(){
@@ -5280,6 +5402,9 @@ var ModEngineUI = (function(){
         },
         showBuildSelection: function(builds){
             showBuildSelectionDialog(builds);
+        },
+        showQuickItems: function(){
+            showQuickItemsDialog();
         },
         invalidateBuildOverview: function(){
             buildOverviewCache = null;
