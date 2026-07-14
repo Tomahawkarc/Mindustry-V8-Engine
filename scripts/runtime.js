@@ -7,6 +7,7 @@ var Lines = Packages.arc.graphics.g2d.Lines;
 var Log = Packages.arc.util.Log;
 var Time = Packages.arc.util.Time;
 var Mathf = Packages.arc.math.Mathf;
+var Jval = Packages.arc.util.serialization.Jval;
 
 var BaseDrawable = Packages.arc.scene.style.BaseDrawable;
 var Group = Packages.arc.scene.Group;
@@ -556,6 +557,22 @@ var ModEngineRuntime = (function(){
         }
     }
 
+    function restoreColoredModMetadata(){
+        try{
+            var loaded = Vars.mods == null ? null : Vars.mods.getMod("mod-engine");
+            if(loaded == null || loaded.meta == null || loaded.root == null) return;
+            var metaFile = loaded.root.child("mod.json");
+            if(!metaFile.exists()) metaFile = loaded.root.child("mod.hjson");
+            if(!metaFile.exists()) return;
+            var raw = Jval.read(metaFile.readString("UTF-8"));
+            loaded.meta.displayName = raw.getString("displayName", loaded.meta.displayName);
+            loaded.meta.author = raw.getString("author", loaded.meta.author);
+            loaded.meta.description = raw.getString("description", loaded.meta.description);
+        }catch(eMeta){
+            Log.err("Failed to restore Mod Engine metadata colors", eMeta);
+        }
+    }
+
     function hotkeySettingKey(id){
         return "mod-engine-hotkey-" + id;
     }
@@ -933,10 +950,14 @@ var ModEngineRuntime = (function(){
         speedHudRoot.setFillParent(true);
         speedHudRoot.touchable = Touchable.childrenOnly;
         var holder = new Table();
-        holder.name = "mod-engine-speed";
+        holder.name = "mod-engine-speed-stack";
         holder.background(Styles.black6);
-        holder.margin(6);
-        holder.image(Icon.play).size(20).padRight(6);
+        holder.top().left();
+
+        var speedRow = new Table();
+        speedRow.name = "mod-engine-speed";
+        speedRow.margin(6);
+        speedRow.image(Icon.play).size(20).padRight(6);
         var speedLabel = new Packages.arc.scene.ui.Label("x" + Math.round(timeSpeed), Styles.outlineLabel);
         speedLabel.setFontScale(0.72);
         speedLabel.setAlignment(Packages.arc.util.Align.center);
@@ -947,11 +968,26 @@ var ModEngineRuntime = (function(){
             if(ui != null && ui.state != null) ui.state.simSpeed = next;
             speedLabel.setText("x" + next);
         }, {track: theme.lineSoft, trackHighlight: theme.line, fill: theme.gold, handle: theme.gold, glow: theme.gold});
-        holder.add(slider.element).width(230).height(28).padRight(7);
-        holder.add(speedLabel).width(38);
-        holder.button("x1", Styles.cleart, run(function(){
+        speedRow.add(slider.element).width(230).height(28).padRight(7);
+        speedRow.add(speedLabel).width(38);
+        speedRow.button("x1", Styles.cleart, run(function(){
             slider.setValue(1, true);
         })).size(42, 30).padLeft(4);
+        holder.add(speedRow).growX().row();
+        holder.image().color(Pal.gray).height(3).fillX().row();
+
+        var itemButton = new Button(Styles.clearNonei);
+        itemButton.name = "mod-engine-quick-items";
+        itemButton.left();
+        var itemIcon = null;
+        try{ itemIcon = Icon.box; }catch(eBox){ try{ itemIcon = Icon.database; }catch(eDb){ itemIcon = Icon.add; } }
+        itemButton.image(itemIcon).size(22).padLeft(10).padRight(8);
+        itemButton.add("QUICK ITEMS").left().growX();
+        itemButton.add("+").color(theme.gold).padLeft(8).padRight(12);
+        itemButton.clicked(run(function(){
+            try{ if(ui != null && ui.showQuickItems != null) ui.showQuickItems(); }catch(eDialog){ Log.err("Quick item dialog failed", eDialog); }
+        }));
+        holder.add(itemButton).growX().height(44).tooltip("Select and add multiple items to the core");
         holder.pack();
         speedHudRoot.addChild(holder);
 
@@ -964,7 +1000,8 @@ var ModEngineRuntime = (function(){
                     var p = new Vec2();
                     p.set(0, 0);
                     speedHudAnchor.localToStageCoordinates(p);
-                    holder.setPosition(p.x, p.y - holder.getHeight() - 4);
+                    // The stack touches the native status HUD exactly; no detached gap.
+                    holder.setPosition(p.x, p.y - holder.getHeight());
                 }else{
                     holder.setPosition(Core.scene.marginLeft + 8, Core.scene.getHeight() - Core.scene.marginTop - holder.getHeight() - 84);
                 }
@@ -2394,6 +2431,25 @@ var ModEngineRuntime = (function(){
         notify("ITEM INJECTED: " + item.name);
     }
 
+    function injectItems(payload){
+        if(payload == null || payload.items == null) return;
+        var amount = payload.amount == null ? 1 : Math.max(1, Math.round(payload.amount));
+        var added = 0;
+        try{
+            var items = payload.items;
+            var length = items.length == null ? 0 : items.length;
+            for(var i = 0; i < length; i++){
+                var item = items[i];
+                if(item == null) continue;
+                addItemToCore(item, amount);
+                added++;
+            }
+        }catch(eItems){
+            Log.err("Batch item injection failed", eItems);
+        }
+        notify(added + " ITEM TYPES ADDED x" + amount);
+    }
+
     function spawnUnit(payload){
         if(payload == null) return;
         var unitType = payload.unit;
@@ -2654,6 +2710,7 @@ var ModEngineRuntime = (function(){
                     Log.info("Mod Engine tab opened: @", payload.tab);
                 },
                 injectItem: injectItem,
+                injectItems: injectItems,
                 spawnUnit: spawnUnit,
                 command: callCommand,
                 unitAction: unitAction,
@@ -2739,6 +2796,7 @@ var ModEngineRuntime = (function(){
         var miningTimer = 0;
 
         Events.on(ClientLoadEvent, cons(function(){
+            restoreColoredModMetadata();
             captureOriginals();
             applyGameSpeed(1);
             Core.app.post(run(function(){
