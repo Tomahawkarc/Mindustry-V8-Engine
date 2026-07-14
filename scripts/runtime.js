@@ -879,7 +879,10 @@ var ModEngineRuntime = (function(){
         hudRoot.update(run(function(){
             try{
                 var shown = modHudVisible() && anchor != null && anchor.hasParent();
-                hudRoot.visible = shown;
+                // Keep the updater root alive. Hiding the root itself can prevent it from
+                // becoming visible again after the full-screen minimap closes on some builds.
+                hudRoot.visible = true;
+                extension.visible = shown;
                 if(!shown) return;
                 position.set(0, 0);
                 anchor.localToStageCoordinates(position);
@@ -935,7 +938,10 @@ var ModEngineRuntime = (function(){
         holder.add(hudButton).size(52).tooltip("Mod Engine");
         hudRoot.add(holder).left().top();
         hudRoot.update(run(function(){
-            try{ hudRoot.visible = modHudVisible(); }catch(eVisible){}
+            try{
+                hudRoot.visible = true;
+                holder.visible = modHudVisible();
+            }catch(eVisible){}
         }));
         Vars.ui.hudGroup.addChild(hudRoot);
     }
@@ -999,7 +1005,8 @@ var ModEngineRuntime = (function(){
         quickHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
-                quickHudRoot.visible = enabled;
+                quickHudRoot.visible = true;
+                holder.visible = enabled;
                 if(!enabled) return;
                 if(quickHudAnchor == null || !quickHudAnchor.hasParent()) quickHudAnchor = findCommandHudButton(Vars.ui.hudGroup);
                 if(quickHudAnchor != null){
@@ -1010,10 +1017,10 @@ var ModEngineRuntime = (function(){
                     try{ stageWidth = Core.scene.getWidth(); }catch(eStage){ stageWidth = Core.graphics.getWidth(); }
                     var maxX = Math.max(0, stageWidth - holder.getWidth() - Core.scene.marginRight);
                     holder.setPosition(Math.min(targetX, maxX), pos.y);
-                    holder.visible = quickHudAnchor.visible;
+                    holder.visible = enabled && quickHudAnchor.visible;
                 }else{
                     holder.setPosition(163 + Core.scene.marginLeft, 8 + Core.scene.marginBottom);
-                    holder.visible = true;
+                    holder.visible = enabled;
                 }
             }catch(ePosition){}
         }));
@@ -1095,8 +1102,10 @@ var ModEngineRuntime = (function(){
 
         speedHudRoot.update(run(function(){
             try{
-                speedHudRoot.visible = modHudVisible() && ui != null && ui.state != null && (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
-                if(!speedHudRoot.visible) return;
+                var enabled = modHudVisible() && ui != null && ui.state != null && (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
+                speedHudRoot.visible = true;
+                holder.visible = enabled;
+                if(!enabled) return;
                 if(speedHudAnchor == null || !speedHudAnchor.hasParent()) speedHudAnchor = Vars.ui.hudGroup.find("statustable");
                 if(speedHudAnchor != null){
                     var p = new Vec2();
