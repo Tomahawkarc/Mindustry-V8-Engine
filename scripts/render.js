@@ -11,154 +11,158 @@ var Core = Packages.arc.Core;
 var Vars = Packages.mindustry.Vars;
 var Shader = Packages.arc.graphics.gl.Shader;
 var FrameBuffer = Packages.arc.graphics.gl.FrameBuffer;
-var Pixmap = Packages.arc.graphics.Pixmap;
-var Texture = Packages.arc.graphics.Texture;
-var TextureFilter = Packages.arc.graphics.Texture.TextureFilter;
-var TextureRegion = Packages.arc.graphics.g2d.TextureRegion;
 var Scl = Packages.arc.scene.ui.layout.Scl;
 var Log = Packages.arc.util.Log;
 
 var rangeBatch = false;
 var rangePreviousZ = 0;
-// This pass owns its framebuffer and never touches Renderer.effectBuffer.
+// Original layer for proper blending with UI
 var rangeLayer = Layer.overlayUI - 2.5;
 var rangeShader = null;
-var rangeBuffer = null;
-var rangeMaskTexture = null;
-var rangeMaskRegion = null;
-var rangeUseFbo = true;
-var rangeResourcesChecked = false;
-var rangeCaptureStarted = false;
+var rangeShaderFailed = false;
 
-function setDrawColor(src, alpha){
+// Custom FBO for our ranges (isolated from Vars.renderer.effectBuffer)
+var rangeFbo = null;
+var rangeFboFailed = false;
+
+// Second FBO for shader effect (edge detection)
+var rangeShaderFbo = null;
+var rangeShaderFboFailed = false;
+
+function copyColor(src, alpha){
     var c = src == null ? Color.white : src;
-    Draw.color(c.r, c.g, c.b, alpha == null ? c.a : alpha);
+    return new Color(c.r, c.g, c.b, alpha == null ? 1 : alpha);
 }
 
-function ensureRangeResources(){
-    if(rangeResourcesChecked) return rangeUseFbo && rangeShader != null && rangeBuffer != null && rangeMaskRegion != null;
-    rangeResourcesChecked = true;
+function ensureFbo(){
+    if(rangeFbo != null) return rangeFbo;
+    try{
+        rangeFbo = new FrameBuffer(Core.graphics.getWidth(), Core.graphics.getHeight());
+    }catch(e){
+        rangeFbo = null;
+        rangeFboFailed = true;
+        Log.err("Failed to create range FBO: " + e);
+    }
+    return rangeFbo;
+}
+
+function ensureShaderFbo(){
+    if(rangeShaderFbo != null) return rangeShaderFbo;
+    try{
+        rangeShaderFbo = new FrameBuffer(Core.graphics.getWidth(), Core.graphics.getHeight());
+    }catch(e){
+        rangeShaderFbo = null;
+        rangeShaderFboFailed = true;
+        Log.err("Failed to create range shader FBO: " + e);
+    }
+    return rangeShaderFbo;
+}
+
+function shader(){
+    if(rangeShader != null || rangeShaderFailed) return rangeShader;
     try{
         var frag = null;
-        try{ frag = Vars.tree.get("aassets/shaders/rangezone.frag"); }catch(eTree){}
+        try{ frag = Vars.tree.get("shaders/rangezone.frag"); }catch(eTree){}
         if(frag == null || !frag.exists()){
-            try{ frag = Vars.tree.get("assets/shaders/rangezone.frag"); }catch(eTree2){}
+            try{ frag = Vars.tree.get("aassets/shaders/rangezone.frag"); }catch(eTree2){}
         }
-        var vert = Core.files.internal("shaders/screenspace.vert");
-        if(frag == null || !frag.exists() || vert == null || !vert.exists()){
-            rangeUseFbo = false;
-            return false;
+        if(frag == null || !frag.exists()){
+            try{ frag = Vars.tree.get("assets/shaders/rangezone.frag"); }catch(eTree3){}
         }
-
-        // Compile from source strings. This path cannot accidentally resolve to an atlas
-        // error/nomap region, which is possible when image helpers are used for a shader file.
-        rangeShader = new Shader(vert.readString(), frag.readString());
-        rangeBuffer = new FrameBuffer();
-
-        // Never use Fill.circle() for the FBO mask: it resolves the atlas "circle"
-        // region and may return the nomap/error sprite in modded atlas configurations.
-        // This private texture is generated once and cannot resolve to any atlas icon.
-        var maskPixmap = new Pixmap(128, 128);
-        maskPixmap.fillCircle(64, 64, 63, Color.whiteRgba);
-        rangeMaskTexture = new Texture(maskPixmap);
-        maskPixmap.dispose();
-        try{ rangeMaskTexture.setFilter(TextureFilter.linear, TextureFilter.linear); }catch(eFilter){}
-        rangeMaskRegion = new TextureRegion(rangeMaskTexture);
-        return true;
+        if(frag == null || !frag.exists()){
+            rangeShaderFailed = true;
+            return null;
+        }
+        rangeShader = new Shader(Core.files.internal("shaders/screenspace.vert"), frag);
     }catch(e){
-        rangeUseFbo = false;
         rangeShader = null;
-        try{ if(rangeBuffer != null) rangeBuffer.dispose(); }catch(eDispose){}
-        try{ if(rangeMaskTexture != null) rangeMaskTexture.dispose(); }catch(eMaskDispose){}
-        rangeBuffer = null;
-        rangeMaskTexture = null;
-        rangeMaskRegion = null;
-        try{ Log.err("Mod Engine private range FBO unavailable; using safe fallback", e); }catch(eLog){}
-        return false;
+        rangeShaderFailed = true;
+        try{ Log.err("Mod Engine range shader failed", e); }catch(eLog){}
     }
-}
-
-function restoreBatchState(){
-    // ScreenQuad blit bypasses SpriteBatch and leaves its texture/program bound. If the
-    // white atlas texture is not rebound, native ForceProjector Fill.poly calls can sample
-    // the range FBO (or the atlas error page) while SpriteBatch still thinks white is bound.
-    try{ Draw.shader(); }catch(eShaderReset){}
-    try{ Draw.blend(); }catch(eBlend){}
-    try{
-        var white = Core.atlas.white();
-        if(white != null && white.texture != null) white.texture.bind(0);
-    }catch(eWhite){
-        try{ Core.atlas.find("white").texture.bind(0); }catch(eWhiteFallback){}
-    }
-    try{
-        var normal = Draw.getShader();
-        if(normal != null){ normal.bind(); normal.apply(); }
-    }catch(eNormalShader){}
-    Draw.reset();
-}
-
-function disableFboAfterFailure(error){
-    try{
-        if(rangeCaptureStarted && rangeBuffer != null) rangeBuffer.end();
-    }catch(eEnd){}
-    rangeCaptureStarted = false;
-    rangeUseFbo = false;
-    restoreBatchState();
-    try{ Log.err("Mod Engine range FBO disabled after render failure", error); }catch(eLog){}
+    return rangeShader;
 }
 
 function beginRanges(){
     if(rangeBatch) return;
     rangeBatch = true;
     rangePreviousZ = Draw.z();
-    if(ensureRangeResources()){
-        try{
-            Draw.drawRange(rangeLayer, 0.5, function(){
-                try{
-                    Draw.flush();
-                    rangeBuffer.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
-                    rangeBuffer.begin(Color.clear);
-                    rangeCaptureStarted = true;
-                }catch(eBegin){
-                    disableFboAfterFailure(eBegin);
-                }
-            }, function(){
-                if(!rangeCaptureStarted || !rangeUseFbo) return;
-                try{
-                    Draw.flush();
-                    rangeBuffer.end();
-                    rangeCaptureStarted = false;
 
-                    rangeShader.bind();
-                    rangeShader.setUniformi("u_texture", 0);
-                    rangeShader.setUniformf("u_time", Time.time);
-                    rangeShader.setUniformf("u_offset",
-                        Core.camera.position.x - Core.camera.width / 2,
-                        Core.camera.position.y - Core.camera.height / 2
-                    );
-                    rangeShader.setUniformf("u_texsize", Core.camera.width, Core.camera.height);
-                    rangeShader.setUniformf("u_invsize", 1 / Core.camera.width, 1 / Core.camera.height);
-                    try{ rangeShader.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ rangeShader.setUniformf("u_dp", 1); }
-                    rangeShader.setUniformf("u_alpha", 1.0);
-                    rangeBuffer.blit(rangeShader);
-                    restoreBatchState();
-                }catch(eBlit){
-                    disableFboAfterFailure(eBlit);
-                }
-            });
-        }catch(eRange){
-            disableFboAfterFailure(eRange);
-        }
+    var fbo = ensureFbo();
+    
+    // Fallback to direct rendering if FBO failed
+    if(fbo == null || rangeFboFailed){
+        Draw.z(rangeLayer);
+        return;
     }
-    Draw.z(rangeLayer);
+
+    try{
+        // Begin drawing to our FBO
+        fbo.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
+        fbo.begin(Color.clear);
+        Draw.z(rangeLayer);
+    }catch(e){
+        rangeFboFailed = true;
+        try{ if(fbo.isBound && fbo.isBound()) fbo.end(); }catch(eEnd){}
+        Draw.z(rangeLayer);
+    }
 }
 
 function endRanges(){
     if(!rangeBatch) return;
-    try{ Draw.flush(); }catch(eFlush){}
-    Draw.reset();
-    Draw.z(rangePreviousZ);
-    rangeBatch = false;
+    
+    var fbo = ensureFbo();
+    var shaderFbo = ensureShaderFbo();
+    var sh = shader();
+    
+    try{
+        // End drawing to our FBO
+        Draw.flush();
+        fbo.end();
+        
+        // Apply shader effect if available
+        if(sh != null && shaderFbo != null && !rangeShaderFboFailed){
+            // Draw our FBO to shader FBO with shader
+            shaderFbo.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
+            shaderFbo.begin(Color.clear);
+            
+            sh.bind();
+            sh.setUniformf("u_time", Time.time);
+            sh.setUniformf("u_offset",
+                Core.camera.position.x - Core.camera.width / 2,
+                Core.camera.position.y - Core.camera.height / 2
+            );
+            sh.setUniformf("u_texsize", Core.camera.width, Core.camera.height);
+            sh.setUniformf("u_invsize", 1 / Core.camera.width, 1 / Core.camera.height);
+            try{ sh.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ sh.setUniformf("u_dp", 1); }
+            sh.setUniformf("u_alpha", 1.0);
+            
+            // Draw our FBO texture to shader FBO
+            Draw.color();
+            Draw.rect(fbo.getTexture(), Core.camera.position.x, Core.camera.position.y, Core.camera.width, -Core.camera.height);
+            
+            Draw.flush();
+            shaderFbo.end();
+            
+            // Draw shader FBO to screen
+            Draw.color();
+            Draw.rect(shaderFbo.getTexture(), Core.camera.position.x, Core.camera.position.y, Core.camera.width, -Core.camera.height);
+        } else {
+            // Fallback: draw our FBO directly to screen
+            Draw.color();
+            Draw.rect(fbo.getTexture(), Core.camera.position.x, Core.camera.position.y, Core.camera.width, -Core.camera.height);
+        }
+    }catch(e){
+        rangeFboFailed = true;
+        rangeShaderFboFailed = true;
+        Log.err("Failed to end ranges: " + e);
+        
+        // Fallback to direct rendering
+        Draw.flush();
+    }finally{
+        Draw.reset();
+        Draw.z(rangePreviousZ);
+        rangeBatch = false;
+    }
 }
 
 function withOverlay(drawer){
@@ -172,29 +176,20 @@ function withOverlay(drawer){
 
 function rangeCircle(x, y, radius, color, alpha, phase){
     if(radius <= 0) return;
-    function drawRange(){
-        var a = alpha == null ? 0.35 : alpha;
-        Draw.z(rangeLayer);
-
-        if(rangeUseFbo && rangeShader != null && rangeBuffer != null && rangeMaskRegion != null){
-            setDrawColor(color, 0.92);
-            Draw.rect(rangeMaskRegion, x, y, radius * 2, radius * 2);
-        }else{
-            setDrawColor(color, Math.min(0.075, a * 0.18));
-            Fill.circle(x, y, radius);
-            setDrawColor(color, 0.78);
-            Drawf.dashCircle(x, y, radius, color);
-        }
-        Draw.reset();
-    }
-    if(rangeBatch) drawRange();
-    else withOverlay(drawRange);
+    
+    var a = alpha == null ? 0.35 : alpha;
+    Draw.z(rangeLayer);
+    
+    // Solid fill for FBO
+    Draw.color(copyColor(color, 1));
+    Fill.circle(x, y, radius);
+    Draw.reset();
 }
 
 function targetMarker(x, y, primary, secondary){
     withOverlay(function(){
         var pulse = 11 + Mathf.absin(Time.time, 6, 3);
-        setDrawColor(primary, 0.14);
+        Draw.color(copyColor(primary, 0.14));
         Fill.circle(x, y, pulse + 6);
         Drawf.dashCircle(x, y, pulse + 2, primary);
         Draw.color(primary);
@@ -214,9 +209,9 @@ function selectionRect(x1, y1, x2, y2, color){
     withOverlay(function(){
         var minX = Math.min(x1, x2), minY = Math.min(y1, y2);
         var width = Math.abs(x2 - x1), height = Math.abs(y2 - y1);
-        setDrawColor(color, 0.055);
+        Draw.color(copyColor(color, 0.055));
         Fill.rect(minX + width / 2, minY + height / 2, width, height);
-        setDrawColor(color, 0.9);
+        Draw.color(copyColor(color, 0.9));
         Lines.stroke(1.5);
         Drawf.dashRect(color, minX, minY, width, height);
         Draw.reset();
