@@ -117,8 +117,9 @@ var ModEngineUI = (function(){
         worldTimeOfDay: 14.33,
         worldWindStrength: 4.2,
         worldSpeedQuickAccess: true,
-        transportOverlay: true,
         buildInstant: true,
+        welcomeShown: false,
+        welcomeLang: "en",
         buildGodmode: false,
         playerAutoRepair: true,
         playerMaxHealth: 12500,
@@ -848,7 +849,6 @@ var ModEngineUI = (function(){
     function topbarRoute(){
         if(state.tab === "waves") return "WAVE_CONTROLLER::DEPLOY_SEQUENCER";
         if(state.tab === "world") return "SECTOR_WORLD_SIM_04";
-        if(state.tab === "transport") return "LOGISTICS_FLOW::ITEM_TRACE";
         if(state.tab === "items") return "//CORE_INTERFACE/ITEMS";
         if(state.tab === "units") return "//CORE_INTERFACE/UNITS";
         if(state.tab === "player") return "PILOT_CORE::STATUS_OVERRIDE";
@@ -896,7 +896,9 @@ var ModEngineUI = (function(){
         if(!state.compact) themeButton.add(label("THEME: " + String(state.themeName).toUpperCase(), s.labelGold, 0.68)).left().padRight(gap.md);
         themeButton.clicked(run(showThemeDialog));
         actions.add(themeButton).height(44).minWidth(state.compact ? 44 : 142).padRight(gap.sm);
-        actions.add(iconButton(getIcon("info"), function(){ callHandler("openDocs", {}); })).size(48).padRight(gap.sm);
+        actions.add(iconButton(getIcon("info"), function(){
+            try{ showWelcomeDialog(true); }catch(eInfo){ callHandler("openDocs", {}); }
+        })).size(48).padRight(gap.sm);
         actions.add(iconButton(getIcon("cancel", "close"), function(){ hide(); })).size(48);
         top.add(actions).right();
 
@@ -939,7 +941,6 @@ var ModEngineUI = (function(){
             {id: "home", text: "Home", icon: getIcon("home"), mode: "usual"},
             {id: "waves", text: "Waves", icon: getIcon("waves", "water"), mode: "usual"},
             {id: "world", text: "World", icon: getIcon("planet", "map"), mode: "usual"},
-            {id: "transport", text: "Transport", icon: getIcon("rightOpen", "right"), mode: "usual"},
             {id: "items", text: "Items", icon: getIcon("box", "database"), mode: "usual"},
             {id: "units", text: "Units", icon: getIcon("units", "factory"), mode: "sandbox"},
             {id: "player", text: "Player", icon: getIcon("players", "admin"), mode: "sandbox"},
@@ -1158,7 +1159,6 @@ var ModEngineUI = (function(){
         if(state.tab === "home") buildHome(contentHost);
         else if(state.tab === "waves") buildWaves(contentHost);
         else if(state.tab === "world") buildWorld(contentHost);
-        else if(state.tab === "transport") buildTransport(contentHost);
         else if(state.tab === "items") buildItems(contentHost);
         else if(state.tab === "units") buildUnits(contentHost);
         else if(state.tab === "player") buildPlayer(contentHost);
@@ -1246,71 +1246,59 @@ var ModEngineUI = (function(){
         }catch(ePane){}
         flowPanel.add(flowPane).growX().height(state.compact ? 260 : 320).padTop(gap.lg);
 
+        // Rebuild visible rows only — hiding Table rows via height=0 leaves large gaps in Arc layouts.
         var flowItems = getCoreDisplayItems();
-        var flowRowRefs = [];
         var flowEmptyLabel = label("NO ITEMS IN CORE STORAGE", s.labelDim, 0.8);
-        for(var fi = 0; fi < flowItems.length; fi++){
-            var flowItem = flowItems[fi];
-            var frow = new Table();
-            frow.left();
-            try{ frow.image(contentDrawable(flowItem, getIcon("box", "database"))).size(28).color(contentColor(flowItem, theme.cyan)).padRight(gap.sm); }catch(eIcon){}
-            frow.add(label(String(flowItem.localizedName).toUpperCase(), s.labelMuted, 0.76)).left().growX();
-            var amountLabel = label("0", s.label, 0.8);
-            frow.add(amountLabel).padRight(gap.sm);
-            var rateLabel = label("(+0/s)", s.labelDim, 0.76);
-            frow.add(rateLabel).right();
-            var flowCell = flowList.add(frow).growX().height(32).padTop(gap.xs);
-            flowList.row();
-            flowRowRefs.push({item: flowItem, key: String(flowItem.name), row: frow, cell: flowCell, amountLabel: amountLabel, rateLabel: rateLabel, lastAmountText: null, lastRateText: null});
-        }
-        var flowEmptyCell = flowList.add(flowEmptyLabel).left().height(28);
+        var lastFlowSignature = null;
+        var flowTick = 0;
 
-        function refreshFlowList(){
+        function rebuildFlowRows(force){
             var flow = getCoreItemFlow();
-            var shown = 0;
-            var visibilityChanged = false;
-            for(var ri = 0; ri < flowRowRefs.length; ri++){
-                var ref = flowRowRefs[ri];
-                var amount = flow.totals[ref.key] || 0;
-                var rate = Math.round(flow.rates[ref.key] || 0);
-                var visible = amount > 0 || rate !== 0;
-                if(ref.row.visible !== visible){
-                    ref.row.visible = visible;
-                    if(visible){
-                        ref.cell.height(32).padTop(gap.xs);
-                    }else{
-                        ref.cell.height(0).padTop(0).padBottom(0);
-                    }
-                    visibilityChanged = true;
-                }
-                if(visible){
-                    shown++;
-                    var amountText = String(Math.round(amount));
-                    if(amountText !== ref.lastAmountText){
-                        ref.lastAmountText = amountText;
-                        ref.amountLabel.setText(amountText);
-                    }
-                    var rateText = "(" + (rate > 0 ? "+" : "") + rate + "/s)";
-                    if(rateText !== ref.lastRateText){
-                        ref.lastRateText = rateText;
-                        ref.rateLabel.setText(rateText);
-                        ref.rateLabel.setStyle(rate > 0 ? s.labelCyan : (rate < 0 ? s.labelRed : s.labelDim));
-                    }
-                }
+            var lines = [];
+            for(var fi = 0; fi < flowItems.length; fi++){
+                var item = flowItems[fi];
+                if(item == null) continue;
+                var key = String(item.name);
+                var amount = Math.round(flow.totals[key] || 0);
+                var rate = Math.round(flow.rates[key] || 0);
+                if(amount === 0 && rate === 0) continue;
+                lines.push({item: item, key: key, amount: amount, rate: rate});
             }
-            var emptyVisible = shown === 0;
-            if(flowEmptyLabel.visible !== emptyVisible){
-                flowEmptyLabel.visible = emptyVisible;
-                flowEmptyCell.height(emptyVisible ? 28 : 0).padTop(0).padBottom(0);
-                visibilityChanged = true;
+            // Signature: which items + rounded amounts/rates. Avoids full rebuild every frame.
+            var signature = lines.length === 0 ? "empty" : lines.map(function(l){
+                return l.key + ":" + l.amount + ":" + l.rate;
+            }).join("|");
+            if(!force && signature === lastFlowSignature) return;
+            lastFlowSignature = signature;
+
+            flowList.clearChildren();
+            flowList.top().left();
+            if(lines.length === 0){
+                flowList.add(flowEmptyLabel).left().height(28).padTop(2).row();
+                return;
             }
-            if(visibilityChanged){
-                try{ flowList.invalidateHierarchy(); }catch(eInv){}
+            for(var i = 0; i < lines.length; i++){
+                var line = lines[i];
+                var frow = new Table();
+                frow.left();
+                try{
+                    frow.image(contentDrawable(line.item, getIcon("box", "database"))).size(28).color(contentColor(line.item, theme.cyan)).padRight(gap.sm);
+                }catch(eIcon){}
+                frow.add(label(String(line.item.localizedName).toUpperCase(), s.labelMuted, 0.76)).left().growX();
+                frow.add(label(String(line.amount), s.label, 0.8)).padRight(gap.sm);
+                var rateStyle = line.rate > 0 ? s.labelCyan : (line.rate < 0 ? s.labelRed : s.labelDim);
+                var rateText = "(" + (line.rate > 0 ? "+" : "") + line.rate + "/s)";
+                frow.add(label(rateText, rateStyle, 0.76)).right();
+                flowList.add(frow).growX().height(32).padTop(i === 0 ? 0 : gap.xs).row();
             }
         }
-        refreshFlowList();
+
+        rebuildFlowRows(true);
         flowPanel.update(run(function(){
-            refreshFlowList();
+            flowTick++;
+            // ~6–7 Hz is enough for item flow and much cheaper than full rebuild each frame.
+            if(flowTick % 10 !== 0) return;
+            rebuildFlowRows(false);
         }));
 
         var settings = panel(s.d.panelGold, gap.lg);
@@ -2194,59 +2182,6 @@ var ModEngineUI = (function(){
         }
         speed.add(speedButtons).left().padTop(gap.lg);
         parent.add(speed).growX().row();
-    }
-
-    function transportStats(){
-        var out = {conveyors: 0, bridges: 0, routers: 0, junctions: 0};
-        try{
-            Groups.build.each(cons(function(build){
-                try{
-                    var cls = String(build.block.getClass().getSimpleName()).toLowerCase();
-                    var name = String(build.block.name).toLowerCase();
-                    if(cls.indexOf("conveyor") >= 0 || cls.indexOf("duct") >= 0) out.conveyors++;
-                    else if(cls.indexOf("bridge") >= 0 || name.indexOf("bridge") >= 0) out.bridges++;
-                    else if(cls.indexOf("router") >= 0) out.routers++;
-                    else if(cls.indexOf("junction") >= 0) out.junctions++;
-                }catch(eBuild){}
-            }));
-        }catch(e){}
-        return out;
-    }
-
-    function buildTransport(parent){
-        var s = getStyles();
-        var stats = transportStats();
-        var head = panel(s.d.panelStrong, gap.xl);
-        head.add(sectionHeader("TRANSPORT VISUALIZER", "LIVE ITEM FLOW OVERLAY", getIcon("rightOpen", "right"))).growX().row();
-        head.add(wrappedLabel("Shows items moving through conveyors, routers, junctions and bridges directly on the map. Works with vanilla and attempts safe class-name detection for modded transport blocks.", s.labelMuted, 0.84)).width(textBlockWidth(840)).left().padTop(gap.md).row();
-        var toggle = textButton(state.transportOverlay ? "FLOW OVERLAY: ON" : "FLOW OVERLAY: OFF", state.transportOverlay ? s.primary : s.action, function(){
-            state.transportOverlay = !state.transportOverlay;
-            callHandler("command", {command: "transport:toggleOverlay", value: state.transportOverlay});
-            rebuildContent(false);
-        });
-        toggle.setChecked(state.transportOverlay);
-        head.add(toggle).height(52).minWidth(220).left().padTop(gap.lg);
-        parent.add(head).growX().row();
-
-        var grid = new Table();
-        grid.left();
-        var cards = [
-            summaryCard("CONVEYORS", String(stats.conveyors), s.labelCyan, s.d.panel),
-            summaryCard("BRIDGES", String(stats.bridges), s.labelGold, s.d.panel),
-            summaryCard("ROUTERS", String(stats.routers), s.labelCyan, s.d.panel),
-            summaryCard("JUNCTIONS", String(stats.junctions), s.labelGold, s.d.panel)
-        ];
-        var cols = state.compact ? 2 : 4;
-        for(var i = 0; i < cards.length; i++){
-            grid.add(cards[i]).growX().height(108).minWidth(state.compact ? 180 : 0).padRight(gap.lg).padBottom(gap.lg);
-            if((i + 1) % cols === 0) grid.row();
-        }
-        parent.add(grid).growX().padTop(gap.xl).row();
-
-        var guide = panel(s.d.panelCyan, gap.lg);
-        guide.add(label("LEGEND", s.labelCyan, 0.86)).left().row();
-        guide.add(wrappedLabel("Item icons are drawn above transport blocks. Bridge links render a moving chain between endpoints. Routers and junctions show their buffered item direction when accessible through Mindustry fields.", s.labelMuted, 0.76)).width(textBlockWidth(760)).left().padTop(gap.md);
-        parent.add(guide).growX().padTop(gap.lg).row();
     }
 
     function buildLinks(parent){
@@ -5144,6 +5079,121 @@ var ModEngineUI = (function(){
         return dialog;
     }
 
+    function welcomeSettingsKey(){
+        return "mod-engine-welcome-v1";
+    }
+
+    function welcomeCopy(lang){
+        if(lang === "ru"){
+            return {
+                title: "MOD ENGINE — ВАЖНО ПЕРЕД ИСПОЛЬЗОВАНИЕМ",
+                subtitle: "Краткий гайд после первой установки",
+                tips: [
+                    "Откройте меню кнопкой Mod Engine в HUD (шестерёнка/иконка рядом с мобильными кнопками).",
+                    "Inspector: если лагает — уменьшите число элементов на странице (PAGE SIZE) до 20–40.",
+                    "Units/Items с большим числом модов: используйте фильтры модов и пагинацию.",
+                    "Mining: назначайте руду на карточках типов юнитов (Mono/Poly/Mega и т.д.).",
+                    "Radius: включение зон дальности — лёгкий оверлей; при слабом устройстве держите выключенным.",
+                    "Console: Rhino JS. Не вставляйте огромные скрипты в бою на слабых устройствах.",
+                    "Режимы nav: USUAL / SANDBOX / ALL — sandbox скрывает «чит»-вкладки в обычном режиме."
+                ],
+                footer: "Язык можно переключить ниже. Это окно показывается один раз."
+            };
+        }
+        return {
+            title: "MOD ENGINE — READ BEFORE USE",
+            subtitle: "First-run notes after install",
+            tips: [
+                "Open the menu with the Mod Engine HUD button (gear/icon near mobile buttons).",
+                "Inspector: if it lags, lower PAGE SIZE to 20–40 items per page.",
+                "Units/Items with many mods: use mod filters and pagination.",
+                "Mining: assign ores on unit-type cards (Mono/Poly/Mega, etc.).",
+                "Radius overlays are lightweight, but keep them off on weak devices if needed.",
+                "Console runs Rhino JS — avoid huge scripts mid-fight on low-end devices.",
+                "Nav modes: USUAL / SANDBOX / ALL — sandbox tools are hidden in usual mode."
+            ],
+            footer: "Switch language below. This dialog is shown once."
+        };
+    }
+
+    function showWelcomeDialog(force){
+        var s = getStyles();
+        var d = new BaseDialog("");
+        try{ d.titleTable.clear(); }catch(eTitle){}
+        d.cont.clear();
+        d.buttons.clear();
+        d.addCloseListener();
+
+        var body = panel(s.d.panelStrong, gap.xl);
+        var lang = state.welcomeLang === "ru" ? "ru" : "en";
+
+        function paint(){
+            body.clearChildren();
+            var copy = welcomeCopy(lang);
+            body.add(label(copy.title, s.labelGold, state.compact ? 1.05 : 1.25)).left().growX().row();
+            body.add(label(copy.subtitle, s.labelCyan, 0.86)).left().padTop(gap.sm).row();
+
+            var langRow = new Table();
+            langRow.left();
+            var enBtn = textButton("EN", lang === "en" ? s.primary : s.action, function(){
+                lang = "en";
+                state.welcomeLang = "en";
+                paint();
+            });
+            var ruBtn = textButton("RU", lang === "ru" ? s.primary : s.action, function(){
+                lang = "ru";
+                state.welcomeLang = "ru";
+                paint();
+            });
+            langRow.add(enBtn).height(40).minWidth(72).padRight(gap.sm);
+            langRow.add(ruBtn).height(40).minWidth(72);
+            body.add(langRow).left().padTop(gap.lg).row();
+
+            var tips = new Table();
+            tips.top().left();
+            for(var i = 0; i < copy.tips.length; i++){
+                var row = new Table();
+                row.left().top();
+                row.background(s.d.panel);
+                row.margin(gap.md);
+                row.add(label(String(i + 1).padStart ? String(i + 1).padStart(2, "0") : ((i + 1) < 10 ? "0" + (i + 1) : String(i + 1)), s.labelCyan, 0.8)).width(36).left();
+                row.add(wrappedLabel(copy.tips[i], s.label, 0.84)).growX().left();
+                tips.add(row).growX().padTop(i === 0 ? gap.md : gap.sm).row();
+            }
+            var tipPane = new ScrollPane(tips, s.pane);
+            tipPane.setScrollingDisabled(true, false);
+            try{ tipPane.setFadeScrollBars(false); tipPane.setOverscroll(false, false); }catch(ePane){}
+            body.add(tipPane).growX().height(state.compact ? 320 : 380).padTop(gap.md).row();
+            body.add(wrappedLabel(copy.footer, s.labelMuted, 0.78)).growX().left().padTop(gap.md).row();
+        }
+
+        paint();
+        d.cont.add(body).width(Math.min(820, Math.max(420, ArcCore.graphics.getWidth() - 80)));
+        d.buttons.add(textButton(lang === "ru" ? "ПОНЯТНО" : "GOT IT", s.primary, function(){
+            try{ ArcCore.settings.put(welcomeSettingsKey(), true); }catch(eSet){}
+            state.welcomeShown = true;
+            hideInstant(d);
+        })).height(50).width(180).padTop(gap.md);
+        d.buttons.add(textButton(lang === "ru" ? "ПОЗЖЕ" : "LATER", s.action, function(){
+            hideInstant(d);
+        })).height(50).width(140).padTop(gap.md).padLeft(gap.sm);
+        d.show();
+    }
+
+    function showWelcomeIfNeeded(){
+        try{
+            if(ArcCore.settings.getBool(welcomeSettingsKey(), false)) return;
+        }catch(e){}
+        if(state.welcomeShown) return;
+        try{
+            ArcCore.app.post(run(function(){
+                showWelcomeDialog(false);
+            }));
+        }catch(ePost){
+            showWelcomeDialog(false);
+        }
+    }
+
     function show(){
         var d = ensureDialog();
         d.cont.clear();
@@ -5178,6 +5228,8 @@ var ModEngineUI = (function(){
             buildOverviewCache = null;
             buildOverviewCacheTime = -9999;
         },
+        showWelcomeIfNeeded: showWelcomeIfNeeded,
+        showWelcomeDialog: showWelcomeDialog,
         state: state
     };
 })();
