@@ -488,6 +488,8 @@ var ModEngineRuntime = (function(){
     var buildSelectionArmMillis = 0;
     var buildSelectionInputLayer = null;
     var selectedBuilds = [];
+    var externalHudProbeTimer = 0;
+    var externalHudBottom = null;
     var hotkeyIgnoreUntil = 0;
     var hotkeyBinds = {};
     var hotkeyDefinitions = [
@@ -554,6 +556,20 @@ var ModEngineRuntime = (function(){
             Vars.ui.showInfoToast(String(text), 3);
         }catch(e){
             Log.info(String(text));
+        }
+    }
+
+    function fullMapShown(){
+        try{ return Vars.ui != null && Vars.ui.minimapfrag != null && Vars.ui.minimapfrag.shown(); }catch(e){}
+        try{ return Vars.ui.minimapfrag.elem != null && Vars.ui.minimapfrag.elem.visible; }catch(eElem){}
+        return false;
+    }
+
+    function modHudVisible(){
+        try{
+            return inGame() && Vars.ui != null && Vars.ui.hudfrag != null && Vars.ui.hudfrag.shown && !fullMapShown();
+        }catch(e){
+            return false;
         }
     }
 
@@ -769,6 +785,78 @@ var ModEngineRuntime = (function(){
         return button;
     }
 
+    function belongsToModEngineHud(element){
+        var current = element;
+        while(current != null){
+            try{
+                var name = current.name == null ? "" : String(current.name);
+                if(name.indexOf("mod-engine") === 0) return true;
+                current = current.parent;
+            }catch(e){
+                return false;
+            }
+        }
+        return false;
+    }
+
+    function effectivelyVisible(element){
+        var current = element;
+        while(current != null){
+            try{ if(!current.visible) return false; }catch(eVisible){}
+            try{ current = current.parent; }catch(eParent){ return false; }
+        }
+        return true;
+    }
+
+    function collectHudObstacles(element, anchor, x, width, out){
+        if(element == null || belongsToModEngineHud(element)) return;
+        var skipCandidate = false;
+        try{
+            if(element === anchor || element.isDescendantOf(anchor)) return;
+            if(anchor.isDescendantOf(element)) skipCandidate = true;
+        }catch(eRelation){}
+
+        try{
+            var ew = element.getWidth(), eh = element.getHeight();
+            var stageW = Core.scene.getWidth(), stageH = Core.scene.getHeight();
+            if(!skipCandidate && effectivelyVisible(element) && ew >= 70 && eh >= 18 && ew < stageW * 0.72 && eh < stageH * 0.45){
+                var p = new Vec2();
+                p.set(0, 0);
+                element.localToStageCoordinates(p);
+                var overlap = Math.min(x + width, p.x + ew) - Math.max(x, p.x);
+                if(overlap >= 28) out.push({bottom: p.y, top: p.y + eh});
+            }
+        }catch(eBounds){}
+
+        try{
+            if(element instanceof Group){
+                var children = element.getChildren();
+                for(var i = 0; i < children.size; i++) collectHudObstacles(children.items[i], anchor, x, width, out);
+            }
+        }catch(eChildren){}
+    }
+
+    function hudStackBottom(anchor, anchorBottom, x, width){
+        if(anchor == null || Vars.ui == null || Vars.ui.hudGroup == null) return anchorBottom;
+        var obstacles = [];
+        collectHudObstacles(Vars.ui.hudGroup, anchor, x, width, obstacles);
+        var boundary = anchorBottom;
+
+        // Follow only panels that form a contiguous vertical chain under the native HUD.
+        for(var pass = 0; pass < 12; pass++){
+            var next = boundary;
+            for(var i = 0; i < obstacles.length; i++){
+                var obstacle = obstacles[i];
+                if(obstacle.bottom < boundary - 0.5 && obstacle.top >= boundary - 12 && obstacle.top <= boundary + 12){
+                    next = Math.min(next, obstacle.bottom);
+                }
+            }
+            if(next >= boundary - 0.5) break;
+            boundary = next;
+        }
+        return boundary;
+    }
+
     function attachHudButton(anchor, size){
         hudRoot = new Table();
         hudRoot.name = "mod-engine-root";
@@ -776,6 +864,7 @@ var ModEngineRuntime = (function(){
         hudRoot.touchable = Touchable.childrenOnly;
 
         var extension = new Table();
+        extension.name = "mod-engine-menu-extension";
         extension.background(Styles.black6);
         extension.top().left();
         hudButton = createHudButton();
@@ -789,7 +878,7 @@ var ModEngineRuntime = (function(){
         var position = new Vec2();
         hudRoot.update(run(function(){
             try{
-                var shown = inGame() && anchor != null && anchor.hasParent();
+                var shown = modHudVisible() && anchor != null && anchor.hasParent();
                 hudRoot.visible = shown;
                 if(!shown) return;
                 position.set(0, 0);
@@ -846,7 +935,7 @@ var ModEngineRuntime = (function(){
         holder.add(hudButton).size(52).tooltip("Mod Engine");
         hudRoot.add(holder).left().top();
         hudRoot.update(run(function(){
-            try{ hudRoot.visible = inGame(); }catch(eVisible){}
+            try{ hudRoot.visible = modHudVisible(); }catch(eVisible){}
         }));
         Vars.ui.hudGroup.addChild(hudRoot);
     }
@@ -909,7 +998,7 @@ var ModEngineRuntime = (function(){
         var pos = new Vec2();
         quickHudRoot.update(run(function(){
             try{
-                var enabled = inGame() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
+                var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
                 quickHudRoot.visible = enabled;
                 if(!enabled) return;
                 if(quickHudAnchor == null || !quickHudAnchor.hasParent()) quickHudAnchor = findCommandHudButton(Vars.ui.hudGroup);
@@ -935,6 +1024,8 @@ var ModEngineRuntime = (function(){
         try{ if(speedHudRoot != null) speedHudRoot.remove(); }catch(eRemove){}
         speedHudRoot = null;
         speedHudAnchor = null;
+        externalHudProbeTimer = 0;
+        externalHudBottom = null;
     }
 
     function rebuildQuickAccessHud(){
@@ -1004,15 +1095,20 @@ var ModEngineRuntime = (function(){
 
         speedHudRoot.update(run(function(){
             try{
-                speedHudRoot.visible = inGame() && Vars.ui.hudfrag.shown && ui != null && ui.state != null && (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
+                speedHudRoot.visible = modHudVisible() && ui != null && ui.state != null && (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
                 if(!speedHudRoot.visible) return;
                 if(speedHudAnchor == null || !speedHudAnchor.hasParent()) speedHudAnchor = Vars.ui.hudGroup.find("statustable");
                 if(speedHudAnchor != null){
                     var p = new Vec2();
                     p.set(0, 0);
                     speedHudAnchor.localToStageCoordinates(p);
-                    // The stack touches the native status HUD exactly; no detached gap.
-                    holder.setPosition(p.x, p.y - holder.getHeight());
+                    externalHudProbeTimer++;
+                    if(externalHudBottom == null || externalHudProbeTimer >= 15){
+                        externalHudProbeTimer = 0;
+                        externalHudBottom = hudStackBottom(speedHudAnchor, p.y, p.x, holder.getWidth());
+                    }
+                    // If another mod already extends the status HUD downward, continue its stack.
+                    holder.setPosition(p.x, externalHudBottom - holder.getHeight());
                 }else{
                     holder.setPosition(Core.scene.marginLeft + 8, Core.scene.getHeight() - Core.scene.marginTop - holder.getHeight() - 84);
                 }
