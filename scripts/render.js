@@ -10,28 +10,47 @@ var Layer = Packages.mindustry.graphics.Layer;
 var Core = Packages.arc.Core;
 var Vars = Packages.mindustry.Vars;
 var Shader = Packages.arc.graphics.gl.Shader;
+var FrameBuffer = Packages.arc.graphics.gl.FrameBuffer;
 var Scl = Packages.arc.scene.ui.layout.Scl;
+var Log = Packages.arc.util.Log;
 
 var rangeBatch = false;
 var rangePreviousZ = 0;
-// Use Layer.shields path when possible so radii behave like animated force shields.
-var rangeLayer = Layer.shields + 0.05;
+// CRITICAL: must NOT overlap native Layer.shields drawRange (shields .. shields+1),
+// which already begins Vars.renderer.effectBuffer. Using the shared buffer there
+// causes: IllegalArgumentException: Do not begin() twice.
+var rangeLayer = Layer.overlayUI - 2.5;
 var rangeShader = null;
 var rangeShaderFailed = false;
+var rangeBuffer = null;
+var rangeUseFbo = true;
 
 function copyColor(src, alpha){
     var c = src == null ? Color.white : src;
     return new Color(c.r, c.g, c.b, alpha == null ? 1 : alpha);
 }
 
+function ensureBuffer(){
+    if(rangeBuffer != null) return rangeBuffer;
+    try{
+        rangeBuffer = new FrameBuffer();
+    }catch(e){
+        rangeBuffer = null;
+        rangeUseFbo = false;
+    }
+    return rangeBuffer;
+}
+
 function shader(){
     if(rangeShader != null || rangeShaderFailed) return rangeShader;
     try{
-        // Prefer dedicated mod path under aassets/shaders; tree also resolves shaders/*.frag
         var frag = null;
         try{ frag = Vars.tree.get("shaders/rangezone.frag"); }catch(eTree){}
         if(frag == null || !frag.exists()){
             try{ frag = Vars.tree.get("aassets/shaders/rangezone.frag"); }catch(eTree2){}
+        }
+        if(frag == null || !frag.exists()){
+            try{ frag = Vars.tree.get("assets/shaders/rangezone.frag"); }catch(eTree3){}
         }
         if(frag == null || !frag.exists()){
             rangeShaderFailed = true;
@@ -41,6 +60,7 @@ function shader(){
     }catch(e){
         rangeShader = null;
         rangeShaderFailed = true;
+        try{ Log.err("Mod Engine range shader failed", e); }catch(eLog){}
     }
     return rangeShader;
 }
@@ -49,39 +69,56 @@ function beginRanges(){
     if(rangeBatch) return;
     rangeBatch = true;
     rangePreviousZ = Draw.z();
+
     var sh = shader();
-    if(sh == null){
-        // Fallback without FBO: still draw at shield layer with low alpha.
+    var buf = ensureBuffer();
+    if(sh == null || buf == null || !rangeUseFbo){
         Draw.z(rangeLayer);
         return;
     }
 
-    // Mirror Renderer.animateShields:
-    // Draw.drawRange(Layer.shields, 1f, () -> effectBuffer.begin(Color.clear), () -> { end; blit(Shaders.shield); });
-    Draw.drawRange(rangeLayer, 1, function(){
-        Vars.renderer.effectBuffer.begin(Color.clear);
-    }, function(){
-        Vars.renderer.effectBuffer.end();
-        try{
-            sh.bind();
-            sh.setUniformf("u_time", Time.time);
-            sh.setUniformf("u_offset",
-                Core.camera.position.x - Core.camera.width / 2,
-                Core.camera.position.y - Core.camera.height / 2
-            );
-            sh.setUniformf("u_texsize", Core.camera.width, Core.camera.height);
-            sh.setUniformf("u_invsize", 1 / Core.camera.width, 1 / Core.camera.height);
-            try{ sh.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ sh.setUniformf("u_dp", 1); }
-            sh.setUniformf("u_alpha", 1.0);
-        }catch(eUniform){}
-        Vars.renderer.effectBuffer.blit(sh);
-    });
+    try{
+        // Own FBO + own z-range, never touch Vars.renderer.effectBuffer.
+        Draw.drawRange(rangeLayer, 0.5, function(){
+            try{
+                buf.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
+                buf.begin(Color.clear);
+            }catch(eBegin){
+                // If begin still fails for any reason, disable FBO path for this session.
+                rangeUseFbo = false;
+                try{ if(buf.isBound && buf.isBound()) buf.end(); }catch(eEnd){}
+            }
+        }, function(){
+            try{
+                if(!rangeUseFbo) return;
+                buf.end();
+                try{
+                    sh.bind();
+                    sh.setUniformf("u_time", Time.time);
+                    sh.setUniformf("u_offset",
+                        Core.camera.position.x - Core.camera.width / 2,
+                        Core.camera.position.y - Core.camera.height / 2
+                    );
+                    sh.setUniformf("u_texsize", Core.camera.width, Core.camera.height);
+                    sh.setUniformf("u_invsize", 1 / Core.camera.width, 1 / Core.camera.height);
+                    try{ sh.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ sh.setUniformf("u_dp", 1); }
+                    sh.setUniformf("u_alpha", 1.0);
+                }catch(eUniform){}
+                buf.blit(sh);
+            }catch(eEnd){
+                rangeUseFbo = false;
+            }
+        });
+    }catch(eRange){
+        rangeUseFbo = false;
+        try{ Log.err("Mod Engine range drawRange failed", eRange); }catch(eLog2){}
+    }
     Draw.z(rangeLayer);
 }
 
 function endRanges(){
     if(!rangeBatch) return;
-    Draw.flush();
+    try{ Draw.flush(); }catch(eFlush){}
     Draw.reset();
     Draw.z(rangePreviousZ);
     rangeBatch = false;
@@ -96,22 +133,25 @@ function withOverlay(drawer){
     }
 }
 
+function fboActive(){
+    return rangeBatch && rangeUseFbo && rangeShader != null && rangeBuffer != null;
+}
+
 function rangeCircle(x, y, radius, color, alpha, phase){
     if(radius <= 0) return;
     function drawRange(){
-        // No per-circle pulse scale: pulse would break silhouette union edges.
         var a = alpha == null ? 0.35 : alpha;
         Draw.z(rangeLayer);
 
-        if(rangeBatch && rangeShader != null){
-            // Solid opaque fill into effectBuffer — shader converts overlaps into a single union.
+        if(fboActive()){
+            // Solid opaque fill into private FBO — shader turns overlaps into a single union edge.
             Draw.color(copyColor(color, 1));
             Fill.circle(x, y, radius);
         }else{
-            // Fallback outline style when FBO/shader unavailable.
-            Draw.color(copyColor(color, Math.min(0.12, a * 0.28)));
+            // Safe fallback: soft fill + outline (no FBO, no crash).
+            Draw.color(copyColor(color, Math.min(0.10, a * 0.22)));
             Fill.circle(x, y, radius);
-            Draw.color(copyColor(color, 0.85));
+            Draw.color(copyColor(color, 0.75));
             Drawf.dashCircle(x, y, radius, color);
         }
         Draw.reset();
