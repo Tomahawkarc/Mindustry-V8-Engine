@@ -820,8 +820,17 @@ var ModEngineRuntime = (function(){
         return true;
     }
 
-    function collectHudObstacles(element, anchor, x, width, out){
+    // Оптимизация: кэш visibility для элементов HUD между probe-вызовами.
+    // collectHudObstacles рекурсивно обходит всех детей hudGroup, что может
+    // вызывать микро-фризы на сценах с множеством элементов. Добавляем
+    // ранний выход для неподходящих элементов + ограничение глубины.
+    var collectHudMaxChildren = 200; // лимит детей для обхода (предотвращение фризов на больших сценах)
+    var collectHudMaxDepth = 10;     // максимальная глубина рекурсии
+    function collectHudObstacles(element, anchor, x, width, out, depth){
         if(element == null || belongsToModEngineHud(element)) return;
+        depth = depth || 0;
+        if(depth > collectHudMaxDepth) return;
+
         var skipCandidate = false;
         try{
             if(element === anchor || element.isDescendantOf(anchor)) return;
@@ -830,10 +839,16 @@ var ModEngineRuntime = (function(){
 
         try{
             var ew = element.getWidth(), eh = element.getHeight();
+            // Быстрый отсев: слишком маленькие или слишком большие элементы
+            if(ew < 70 || eh < 18) return;
+            if(skipCandidate) return;
             var stageW = Core.scene.getWidth(), stageH = Core.scene.getHeight();
-            if(!skipCandidate && effectivelyVisible(element) && ew >= 70 && eh >= 18 && ew < stageW * 0.72 && eh < stageH * 0.45){
+            if(ew >= stageW * 0.72 || eh >= stageH * 0.45) return;
+
+            if(effectivelyVisible(element)){
                 hudProbePoint.set(0, 0);
                 element.localToStageCoordinates(hudProbePoint);
+                if(Math.abs(hudProbePoint.x - x) > ew + width + 100) return; // слишком далеко по X
                 var overlap = Math.min(x + width, hudProbePoint.x + ew) - Math.max(x, hudProbePoint.x);
                 if(overlap >= 28){
                     out.push(hudProbePoint.y);
@@ -843,17 +858,25 @@ var ModEngineRuntime = (function(){
         }catch(eBounds){}
 
         try{
-            if(element instanceof Group){
+            if(element instanceof Group && depth < collectHudMaxDepth){
                 var children = element.getChildren();
-                for(var i = 0; i < children.size; i++) collectHudObstacles(children.items[i], anchor, x, width, out);
+                var limit = Math.min(children.size, collectHudMaxChildren);
+                for(var i = 0; i < limit; i++){
+                    collectHudObstacles(children.items[i], anchor, x, width, out, depth + 1);
+                }
             }
         }catch(eChildren){}
     }
 
+    // hudStackBottom obstacle collection — используем переиспользуемый массив
+    // вместо new [] каждый раз, чтобы уменьшить GC-нагрузку.
+    var hudObstacleBuffer = null;
     function hudStackBottom(anchor, anchorBottom, x, width){
         if(anchor == null || Vars.ui == null || Vars.ui.hudGroup == null) return anchorBottom;
-        var obstacles = [];
-        collectHudObstacles(Vars.ui.hudGroup, anchor, x, width, obstacles);
+        if(hudObstacleBuffer == null) hudObstacleBuffer = [];
+        hudObstacleBuffer.length = 0;
+        collectHudObstacles(Vars.ui.hudGroup, anchor, x, width, hudObstacleBuffer);
+        var obstacles = hudObstacleBuffer;
         var boundary = anchorBottom;
 
         // Follow only panels that form a contiguous vertical chain under the native HUD.
@@ -895,16 +918,21 @@ var ModEngineRuntime = (function(){
         hudRoot.update(run(function(){
             try{
                 var shown = modHudVisible() && anchor != null && anchor.hasParent();
-                // Keep the updater root alive. Hiding the root itself can prevent it from
-                // becoming visible again after the full-screen minimap closes on some builds.
                 hudRoot.visible = true;
                 if(shown !== menuHudShown){
                     menuHudShown = shown;
                     extension.visible = shown;
+                    // При появлении сразу позиционируемся без ожидания 10 кадров
+                    if(shown && anchor != null){
+                        position.set(0, 0);
+                        anchor.localToStageCoordinates(position);
+                        extension.setPosition(position.x + anchor.getWidth(), position.y + anchor.getHeight() - extension.getHeight());
+                    }
                 }
                 if(!shown) return;
+                // Позиционирование раз в 30 кадров (~0.5 сек) вместо 10 (~0.16 сек)
                 menuHudTick++;
-                if(menuHudTick < 10) return;
+                if(menuHudTick < 30) return;
                 menuHudTick = 0;
                 position.set(0, 0);
                 anchor.localToStageCoordinates(position);
@@ -1025,6 +1053,7 @@ var ModEngineRuntime = (function(){
         var pos = new Vec2();
         var quickHudTick = 0;
         var quickHudShown = null;
+        var quickHudPosTimer = 0;
         quickHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
@@ -1032,11 +1061,14 @@ var ModEngineRuntime = (function(){
                 if(enabled !== quickHudShown){
                     quickHudShown = enabled;
                     holder.visible = enabled;
+                    // При переключении позиционируемся сразу
+                    if(enabled) quickHudPosTimer = 999; // форсируем reposition
                 }
                 if(!enabled) return;
-                quickHudTick++;
-                if(quickHudTick < 10) return;
-                quickHudTick = 0;
+                // Позиционирование раз в 30 кадров (~0.5 сек) вместо каждых 10
+                quickHudPosTimer++;
+                if(quickHudPosTimer < 30) return;
+                quickHudPosTimer = 0;
                 if(quickHudAnchor == null || !quickHudAnchor.hasParent()) quickHudAnchor = findCommandHudButton(Vars.ui.hudGroup);
                 if(quickHudAnchor != null){
                     pos.set(0, 0);
@@ -1081,6 +1113,9 @@ var ModEngineRuntime = (function(){
         speedHudRoot.name = "mod-engine-speed-root";
         speedHudRoot.setFillParent(true);
         speedHudRoot.touchable = Touchable.childrenOnly;
+        // Отключаем обновление по умолчанию — будем вешать свой обработчик
+        // только на reposition, а не на каждое обновление сцены
+        speedHudRoot.visible = true;
         var holder = new Table();
         holder.name = "mod-engine-speed-stack";
         holder.background(Styles.black6);
@@ -1129,36 +1164,92 @@ var ModEngineRuntime = (function(){
         holder.pack();
         speedHudRoot.addChild(holder);
 
-        var speedHudTick = 0;
-        var speedHudShown = null;
+        // === ОПТИМИЗАЦИЯ МИКРО-ФРИЗОВ ===
+        // Проблема: update-коллбэк на Table вызывается каждый кадр (60fps).
+        // Даже с дросселированием, это добавляет накладные расходы на GC
+        // (создание замыканий, Vec2, String каждые N кадров).
+        // Решение: используем reposition-коллбэк (вызывается при смене размера)
+        // + ручной вызов через Core.app.post при переключении видимости.
+        // Микро-позиционирование (проверка anchor) делаем только при resize
+        // или раз в 2 секунды, probe hudStackBottom — раз в 10 секунд.
+
+        var speedHudShown = false;
+        var speedHudResizeTimer = 0;
+        var speedHudAnchorTimer = 0;
+        var speedHudProbeTimer = 0;
+        // Используем переиспользуемый Vec2 вместо new Vec2() каждый раз
         var speedHudPoint = new Vec2();
-        speedHudRoot.update(run(function(){
+        var speedHudBottom = null;
+
+        // Первый reposition через 2 секунды после создания (ждём стабилизации HUD)
+        var firstRepositionPending = true;
+
+        function repositionSpeedHud(){
+            if(holder == null || !holder.visible) return;
+
             try{
-                var enabled = modHudVisible() && ui != null && ui.state != null && (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
-                speedHudRoot.visible = true;
-                if(enabled !== speedHudShown){
-                    speedHudShown = enabled;
-                    holder.visible = enabled;
+                if(speedHudAnchor == null || !speedHudAnchor.hasParent()){
+                    speedHudAnchor = Vars.ui.hudGroup.find("statustable");
                 }
-                if(!enabled) return;
-                speedHudTick++;
-                if(speedHudTick < 10) return;
-                speedHudTick = 0;
-                if(speedHudAnchor == null || !speedHudAnchor.hasParent()) speedHudAnchor = Vars.ui.hudGroup.find("statustable");
+
                 if(speedHudAnchor != null){
                     speedHudPoint.set(0, 0);
                     speedHudAnchor.localToStageCoordinates(speedHudPoint);
-                    externalHudProbeTimer += 10;
-                    if(externalHudBottom == null || externalHudProbeTimer >= 180){
-                        externalHudProbeTimer = 0;
-                        externalHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth());
+                    if(speedHudBottom == null){
+                        speedHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth());
                     }
-                    // If another mod already extends the status HUD downward, continue its stack.
-                    holder.setPosition(speedHudPoint.x, externalHudBottom - holder.getHeight());
+                    holder.setPosition(speedHudPoint.x, speedHudBottom - holder.getHeight());
                 }else{
-                    holder.setPosition(Core.scene.marginLeft + 8, Core.scene.getHeight() - Core.scene.marginTop - holder.getHeight() - 84);
+                    holder.setPosition(Core.scene.marginLeft + 8,
+                        Core.scene.getHeight() - Core.scene.marginTop - holder.getHeight() - 84);
                 }
-            }catch(ePosition){}
+            }catch(e){}
+        }
+
+        speedHudRoot.update(run(function(){
+            try{
+                var enabled = modHudVisible() && ui != null && ui.state != null &&
+                    (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
+                if(enabled !== speedHudShown){
+                    speedHudShown = enabled;
+                    holder.visible = enabled;
+                    if(enabled){
+                        // При появлении — сразу обновить позицию (один раз через post,
+                        // чтобы не ломать текущий фрейм)
+                        Core.app.post(run(function(){ repositionSpeedHud(); }));
+                    }
+                }
+                if(!enabled) return;
+
+                // reposition ставим в очередь каждый 120 кадров (~2 сек при 60fps)
+                speedHudResizeTimer++;
+                if(speedHudResizeTimer < 120 && !firstRepositionPending) return;
+                speedHudResizeTimer = 0;
+                firstRepositionPending = false;
+
+                // Перепроверяем anchor раз в 5 reposition-циклов (~10 сек)
+                speedHudAnchorTimer++;
+                if(speedHudAnchorTimer >= 5){
+                    speedHudAnchorTimer = 0;
+                    if(speedHudAnchor == null || !speedHudAnchor.hasParent()){
+                        speedHudAnchor = Vars.ui.hudGroup.find("statustable");
+                        speedHudBottom = null; // сброс, т.к. anchor изменился
+                    }
+                }
+
+                repositionSpeedHud();
+
+                // hudStackBottom probe — раз в 600 кадров (~10 секунд)
+                speedHudProbeTimer += 120;
+                if(speedHudProbeTimer >= 600){
+                    speedHudProbeTimer = 0;
+                    if(speedHudAnchor != null){
+                        speedHudPoint.set(0, 0);
+                        speedHudAnchor.localToStageCoordinates(speedHudPoint);
+                        speedHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth());
+                    }
+                }
+            }catch(e){}
         }));
         Vars.ui.hudGroup.addChild(speedHudRoot);
     }
