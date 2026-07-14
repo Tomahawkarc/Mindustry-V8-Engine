@@ -19,6 +19,8 @@ var ImageButton = Packages.arc.scene.ui.ImageButton;
 var Label = Packages.arc.scene.ui.Label;
 var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
+var InputListener = Packages.arc.scene.event.InputListener;
+var KeyCode = Packages.arc.input.KeyCode;
 
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
@@ -129,7 +131,7 @@ var ModEngineUI = (function(){
         playerRegen: 450,
         weaponCritEnabled: true,
         weaponGlobalDamage: 1.5,
-        weaponInstantReload: false,
+        unitFireRate: 1.0,
         weaponBulletDamage: 45,
         weaponRange: 240,
         weaponSpread: 0.5,
@@ -149,6 +151,16 @@ var ModEngineUI = (function(){
         fleetAssignments: {},
         consoleInputText: "",
         consoleScrollBottom: false,
+        hotkeyCaptureActive: false,
+        hotkeyBinds: {
+            toggleMenu: "tab",
+            instantBuild: "f4",
+            structureGodmode: "f5",
+            forceWave: "f8",
+            pauseWaveTimer: "p",
+            healStructures: "h",
+            turretRadii: "r"
+        },
         consoleLines: [
             "System initialising... v8.0.42_stable built on kernel 0x2A",
             "Memory buffer verified. 128.4GB / 256.0GB available.",
@@ -528,6 +540,11 @@ var ModEngineUI = (function(){
         if(config.handlers != null){
             for(var key in config.handlers){
                 handlers[key] = config.handlers[key];
+            }
+        }
+        if(config.hotkeys != null){
+            for(var hotkeyId in config.hotkeys){
+                state.hotkeyBinds[hotkeyId] = config.hotkeys[hotkeyId];
             }
         }
     }
@@ -949,7 +966,8 @@ var ModEngineUI = (function(){
             {id: "inspector", text: "Inspector", icon: getIcon("zoom", "search"), mode: "usual"},
             {id: "builds", text: "Builds", icon: getIcon("edit", "wrench"), mode: "sandbox"},
             {id: "radius", text: "Radius", icon: getIcon("logic", "settings"), mode: "usual"},
-            {id: "console", text: "Console", icon: getIcon("terminal", "file"), mode: "usual"}
+            {id: "console", text: "Console", icon: getIcon("terminal", "file"), mode: "usual"},
+            {id: "hotkeys", text: "Hotkeys", icon: getIcon("keyboard", "settings"), mode: "usual"}
         ];
         var mode = state.navMode || "all";
         if(mode === "all") return all;
@@ -1072,8 +1090,6 @@ var ModEngineUI = (function(){
         operator.add(opText).growX();
         sidebarHost.add(operator).growX().height(64).padTop(gap.lg).row();
 
-        sidebarHost.add(textButton("INITIALIZE", s.primary, function(){ callHandler("initialize", {}); })).growX().height(58).padTop(gap.lg);
-
         parent.add(sidebarHost).width(Math.min(310, ArcCore.graphics.getWidth() * 0.26)).growY();
     }
 
@@ -1168,6 +1184,7 @@ var ModEngineUI = (function(){
         else if(state.tab === "builds") buildBuilds(contentHost);
         else if(state.tab === "console") buildConsole(contentHost);
         else if(state.tab === "radius") buildRadius(contentHost);
+        else if(state.tab === "hotkeys") buildHotkeys(contentHost);
         else buildUtility(contentHost, state.tab);
 
         try{
@@ -3750,15 +3767,69 @@ var ModEngineUI = (function(){
         return p;
     }
 
-    function hotkeyRow(parent, text, key, command){
+    function hotkeyDisplay(keyName){
+        if(keyName == null || String(keyName).length === 0 || String(keyName) === "unset") return "NONE";
+        try{ return String(KeyCode.valueOf(String(keyName)).getName()).toUpperCase(); }catch(e){}
+        return String(keyName).toUpperCase();
+    }
+
+    function showHotkeyCapture(bindId, title){
+        var s = getStyles();
+        var d = new BaseDialog("");
+        try{ d.titleTable.clear(); }catch(eTitle){}
+        d.cont.clear();
+        d.buttons.clear();
+        state.hotkeyCaptureActive = true;
+
+        var body = panel(s.d.panelStrong, gap.xl);
+        body.add(sectionHeader("PRESS A KEY", "REMAP", getIcon("keyboard", "settings"))).growX().row();
+        body.add(label(String(title).toUpperCase(), s.labelGold, 1.0)).left().padTop(gap.lg).row();
+        body.add(wrappedLabel("The next keyboard key becomes the new bind. Press ESC to remove this bind.", s.labelMuted, 0.82)).width(textBlockWidth(520)).left().padTop(gap.md).row();
+        body.add(label("LISTENING...", s.labelCyan, 1.18)).center().padTop(gap.xl);
+        d.cont.add(body).width(Math.min(620, Math.max(420, ArcCore.graphics.getWidth() - 100)));
+
+        function closeCapture(){
+            state.hotkeyCaptureActive = false;
+            hideInstant(d);
+        }
+
+        function applyKey(keycode){
+            var keyName = null;
+            if(keycode != null && keycode != KeyCode.escape && keycode != KeyCode.unset && keycode != KeyCode.unknown){
+                try{ keyName = String(keycode.name()); }catch(eName){ keyName = String(keycode); }
+            }
+            state.hotkeyBinds[bindId] = keyName;
+            callHandler("command", {command: keyName == null ? "hotkeys:unbind" : "hotkeys:set", id: bindId, key: keyName});
+            closeCapture();
+            rebuildContent(false);
+        }
+
+        d.addListener(extend(InputListener, {
+            keyDown: function(event, keycode){
+                try{ event.stop(); }catch(eStop){}
+                applyKey(keycode);
+                return true;
+            }
+        }));
+        try{ d.hidden(run(function(){ state.hotkeyCaptureActive = false; })); }catch(eHidden){}
+        d.buttons.add(textButton("CANCEL", s.action, closeCapture)).height(48).width(170).padTop(gap.md);
+        d.show();
+        try{
+            ArcCore.app.post(run(function(){
+                try{ ArcCore.scene.setKeyboardFocus(d); }catch(eFocus){}
+            }));
+        }catch(ePost){}
+    }
+
+    function hotkeyRow(parent, text, bindId){
         var s = getStyles();
         var row = new Table();
         row.background(s.d.panel);
         row.margin(gap.md);
         row.left();
         row.add(label(text, s.label, 0.84)).left().growX();
-        row.add(textButton(key, s.action, function(){
-            callHandler("command", {command: command, bind: key});
+        row.add(textButton(hotkeyDisplay(state.hotkeyBinds[bindId]), s.action, function(){
+            showHotkeyCapture(bindId, text);
         })).height(46).minWidth(120).right();
         parent.add(row).growX().height(72).padTop(gap.md).row();
     }
@@ -3773,7 +3844,7 @@ var ModEngineUI = (function(){
         head.add(label(code, s.labelDim, 0.72)).right();
         p.add(head).growX().row();
         for(var i = 0; i < rows.length; i++){
-            hotkeyRow(p, rows[i][0], rows[i][1], rows[i][2]);
+            hotkeyRow(p, rows[i][0], rows[i][1]);
         }
         return p;
     }
@@ -4373,21 +4444,21 @@ var ModEngineUI = (function(){
         var s = getStyles();
         var head = panel(s.d.panelStrong, gap.xl);
         head.add(label("HOTKEY CONFIGURATION", s.label, 1.18)).left().row();
-        head.add(wrappedLabel("Click a key cell and press a button to remap. ESC to cancel or unbind. Systems will recalibrate immediately upon entry.", s.labelMuted, 0.9)).width(textBlockWidth(820)).left().padTop(gap.lg);
+        head.add(wrappedLabel("Click a key cell, then press a keyboard key. ESC removes the selected bind. Changes are saved immediately.", s.labelMuted, 0.9)).width(textBlockWidth(820)).left().padTop(gap.lg);
         parent.add(head).growX().row();
 
         var modules = [
-            hotkeyModule("INTERFACE", "MODULE_01", getIcon("box", "database"), [["Toggle Menu", "TAB", "hotkeys:toggleMenu"], ["Telemetry HUD", "H", "hotkeys:telemetryHud"], ["Overlay Opacity", "0", "hotkeys:overlayOpacity"]]),
-            hotkeyModule("CONSTRUCTION", "MODULE_02", getIcon("edit", "wrench"), [["Instant Build", "F4", "hotkeys:instantBuild"], ["Structure Godmode", "F5", "hotkeys:structureGodmode"], ["Deconstruct Layer", "DEL", "hotkeys:deconstructLayer"]]),
-            hotkeyModule("WAVES", "MODULE_03", getIcon("waves", "water"), [["Force Wave", "F8", "hotkeys:forceWave"], ["Pause Wave Timer", "P", "hotkeys:pauseWaveTimer"]]),
-            hotkeyModule("MASS ACTIONS", "MODULE_04", getIcon("commandAttack", "target"), [["Heal All Structures", "H", "hotkeys:healAllStructures"], ["Re-Arm Defensive Grid", "R", "hotkeys:rearmGrid"], ["Wipe Debris", "NONE", "hotkeys:wipeDebris"]])
+            {view: hotkeyModule("INTERFACE", "MODULE_01", getIcon("keyboard", "settings"), [["Toggle Menu", "toggleMenu"]]), rows: 1},
+            {view: hotkeyModule("CONSTRUCTION", "MODULE_02", getIcon("edit", "wrench"), [["Instant Build", "instantBuild"], ["Structure Godmode", "structureGodmode"]]), rows: 2},
+            {view: hotkeyModule("WAVES", "MODULE_03", getIcon("waves", "water"), [["Force Wave", "forceWave"], ["Pause Wave Timer", "pauseWaveTimer"]]), rows: 2},
+            {view: hotkeyModule("TACTICAL", "MODULE_04", getIcon("commandAttack", "target"), [["Heal All Structures", "healStructures"], ["Toggle Turret Radii", "turretRadii"]]), rows: 2}
         ];
 
         var grid = new Table();
         grid.top().left();
         var cols = state.compact ? 1 : 2;
         for(var i = 0; i < modules.length; i++){
-            grid.add(modules[i]).growX().height(i === 2 ? 260 : 320).padRight(gap.lg).padBottom(gap.lg);
+            grid.add(modules[i].view).growX().height(92 + modules[i].rows * 88).padRight(gap.lg).padBottom(gap.lg);
             if((i + 1) % cols === 0) grid.row();
         }
         parent.add(grid).growX().padTop(gap.xl).row();
@@ -4397,13 +4468,13 @@ var ModEngineUI = (function(){
         footer.margin(gap.md);
         footer.left();
         if(state.compact){
-            footer.add(label("V8.4.12 // PROTOCOL-LINK-ESTABLISHED", s.labelCyan, 0.84)).left().growX().row();
-            footer.add(textButton("RESET_ALL_BINDS", s.danger, function(){ callHandler("command", {command: "hotkeys:resetAll"}); })).height(54).growX().padTop(gap.md).row();
+            footer.add(label("HOTKEY-LINK // ACTIVE", s.labelCyan, 0.84)).left().growX().row();
+            footer.add(textButton("RESET_DEFAULTS", s.danger, function(){ callHandler("command", {command: "hotkeys:resetAll"}); rebuildContent(false); })).height(54).growX().padTop(gap.md).row();
             footer.add(textButton("SAVE & EXIT", s.primary, function(){ callHandler("command", {command: "hotkeys:saveExit"}); })).height(54).growX().padTop(gap.md);
             parent.add(footer).growX().padTop(gap.md).row();
         }else{
-            footer.add(label("V8.4.12 // PROTOCOL-LINK-ESTABLISHED", s.labelCyan, 0.84)).left().growX();
-            footer.add(textButton("RESET_ALL_BINDS", s.danger, function(){ callHandler("command", {command: "hotkeys:resetAll"}); })).height(54).minWidth(220).padRight(gap.md);
+            footer.add(label("HOTKEY-LINK // ACTIVE", s.labelCyan, 0.84)).left().growX();
+            footer.add(textButton("RESET_DEFAULTS", s.danger, function(){ callHandler("command", {command: "hotkeys:resetAll"}); rebuildContent(false); })).height(54).minWidth(220).padRight(gap.md);
             footer.add(textButton("SAVE & EXIT", s.primary, function(){ callHandler("command", {command: "hotkeys:saveExit"}); })).height(54).minWidth(180);
             parent.add(footer).growX().height(74).padTop(gap.md).row();
         }
@@ -4698,20 +4769,15 @@ var ModEngineUI = (function(){
         var params = panel(s.d.panelCyan, gap.xl);
         params.add(label("UNIT WEAPON PARAMETERS", s.labelCyan, 1.1)).left().row();
         params.add(label("FIELD UNIT CALIBRATION", s.labelDim, 0.72)).left().padTop(gap.sm).row();
-        var instantReloadBtn = textButton(state.weaponInstantReload ? "INSTANT RELOAD: ON (0 reload)" : "INSTANT RELOAD: OFF", state.weaponInstantReload ? s.primary : s.action, function(){
-            state.weaponInstantReload = !state.weaponInstantReload;
-            rebuildContent();
-        });
-        instantReloadBtn.setChecked(state.weaponInstantReload);
-        params.add(instantReloadBtn).growX().height(52).padTop(gap.xl).row();
-        params.add(wrappedLabel("Sets reload to 0 (fastest possible) on your own team's units only. Enemy units of the same type are unaffected.", s.labelDim, 0.72)).width(state.compact ? textBlockWidth(500) : 470).left().padTop(gap.sm).row();
+        params.add(liveSliderBlock("UNIT FIRE RATE", 0.2, 50, 0.1, state.unitFireRate, function(v){ return "x" + v.toFixed(1); }, "x0.2", "x25", "x50", theme.cyan, function(v){ state.unitFireRate = v; })).growX().padTop(gap.xl).row();
+        params.add(wrappedLabel("Adjusts the native reload time of every unit weapon. A one-tick safety floor keeps all mounts firing without the per-frame reload loop that caused lag.", s.labelDim, 0.72)).width(state.compact ? textBlockWidth(500) : 470).left().padTop(gap.sm).row();
         params.add(liveSliderBlock("BULLET DAMAGE", 1, 500, 1, state.weaponBulletDamage, function(v){ return v.toFixed(1) + " DM"; }, "1.0 DM", "", "500.0 DM", theme.cyan, function(v){ state.weaponBulletDamage = v; })).growX().padTop(gap.lg).row();
         params.add(liveSliderBlock("RANGE", 40, 1000, 1, state.weaponRange, function(v){ return Math.round(v) + "m"; }, "40m", "", "1000m", theme.cyan, function(v){ state.weaponRange = v; })).growX().padTop(gap.lg).row();
         params.add(liveSliderBlock("INACCURACY (SPREAD)", 0, 15, 0.1, state.weaponSpread, function(v){ return v.toFixed(1) + "°"; }, "FIXED", "", "15° SPREAD", theme.cyan, function(v){ state.weaponSpread = v; })).growX().padTop(gap.lg).row();
         var paramActions = new Table();
         paramActions.left();
         paramActions.add(textButton("APPLY_UNIT_CHANGES", s.primary, function(){
-            callHandler("command", {command: state.weaponInstantReload ? "weapon:applyUnits" : "weapon:resetUnits"});
+            callHandler("command", {command: "weapon:applyUnits"});
         })).height(54).minWidth(200).padRight(gap.md);
         paramActions.add(textButton("RESET_UNITS", s.action, function(){ callHandler("command", {command: "weapon:resetUnits"}); })).height(54).minWidth(160);
         params.add(paramActions).left().padTop(gap.xl);
@@ -5191,9 +5257,19 @@ var ModEngineUI = (function(){
         if(dialog != null) dialog.hide();
     }
 
+    function toggle(){
+        try{
+            if(dialog != null && dialog.isShown()) hide();
+            else show();
+        }catch(e){
+            show();
+        }
+    }
+
     return {
         show: show,
         hide: hide,
+        toggle: toggle,
         configure: configure,
         rebuild: function(){
             if(dialog == null) return;
