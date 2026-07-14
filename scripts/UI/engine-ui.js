@@ -2697,6 +2697,9 @@ var ModEngineUI = (function(){
 
     function unitPlanetGroup(unit){
         try{
+            if(unit != null && unit.minfo != null && unit.minfo.mod != null) return "mods";
+        }catch(eMod){}
+        try{
             var n = String(unit.name);
             var serpulo = ["alpha","beta","gamma","dagger","mace","fortress","scepter","reign","nova","pulsar","quasar","vela","corvus","crawler","atrax","spiroct","arkyid","toxopid","flare","horizon","zenith","antumbra","eclipse","mono","poly","mega","quad","oct","risso","minke","bryde","sei","omura","retusa","oxynoe","cyerce","aegires","navanax"];
             for(var i = 0; i < serpulo.length; i++) if(serpulo[i] === n) return "serpulo";
@@ -3734,7 +3737,7 @@ var ModEngineUI = (function(){
 
         var planetControls = new Table();
         planetControls.left();
-        var planets = [["ALL_PLANETS","all"],["SERPULO","serpulo"],["EREKIR","erekir"]];
+        var planets = [["ALL","all"],["MODS","mods"],["SERPULO","serpulo"],["EREKIR","erekir"]];
         for(var pi2 = 0; pi2 < planets.length; pi2++){
             (function(text, value){
                 var b = textButton(text, state.inspectorPlanet === value ? s.primary : s.action, function(){
@@ -3764,7 +3767,7 @@ var ModEngineUI = (function(){
                 if(state.inspectorCategory !== "all" && state.inspectorCategory !== key) continue;
                 for(var bi = 0; bi < bucket.length; bi++){
                     if(state.inspectorTier !== 0 && unitTier(bucket[bi].type) !== state.inspectorTier) continue;
-                    if(key !== "ENEMY" && state.inspectorPlanet !== "all" && unitPlanetGroup(bucket[bi].type) !== state.inspectorPlanet) continue;
+                    if(state.inspectorPlanet !== "all" && unitPlanetGroup(bucket[bi].type) !== state.inspectorPlanet) continue;
                     flat.push({key: key, entry: bucket[bi]});
                 }
             }
