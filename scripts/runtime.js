@@ -361,28 +361,60 @@ function deliverCargoToCorePlayerSafe(unit){
 
 function canUnitMine(unit){
     try{
-        return unit.type != null && unit.type.mineTier >= 0 && unit.type.mineSpeed > 0;
-    }catch(e){
-        return false;
+        if(unit == null || unit.type == null) return false;
+        if(unit.type.mineTier >= 0 && unit.type.mineSpeed > 0) return true;
+    }catch(e){}
+    try{
+        if(unit.type.commands != null && unit.type.commands.contains(UnitCommand.mineCommand)) return true;
+    }catch(e2){}
+    return false;
+}
+
+function unitTeamOf(unit){
+    try{ return unit.team(); }catch(e){
+        try{ return unit.team; }catch(e2){ return null; }
     }
 }
 
 function eachFleetUnit(unitTypeName, team, fn){
-    if(unitTypeName == null || team == null) return;
+    if(unitTypeName == null || fn == null) return;
+    var seen = {};
+    function consider(unit){
+        try{
+            if(unit == null || unit.type == null) return;
+            if(String(unit.type.name) !== String(unitTypeName)) return;
+            if(team != null){
+                var ut = unitTeamOf(unit);
+                if(ut != null && ut != team) return;
+            }
+            if(!canUnitMine(unit)) return;
+            var id = null;
+            try{ id = unit.id; }catch(eId){ id = unit; }
+            if(seen[id]) return;
+            seen[id] = true;
+            fn(unit);
+        }catch(eInner){}
+    }
+
+    // Preferred: team unit index
     try{
-        var data = team.data();
-        if(data == null || data.units == null) return;
-        var list = data.units;
-        for(var i = 0; i < list.size; i++){
-            try{
-                var unit = list.items[i];
-                if(unit == null || unit.type == null) continue;
-                if(String(unit.type.name) !== String(unitTypeName)) continue;
-                if(!canUnitMine(unit)) continue;
-                fn(unit);
-            }catch(eInner){}
+        if(team != null){
+            var data = team.data();
+            if(data != null && data.units != null){
+                var list = data.units;
+                for(var i = 0; i < list.size; i++){
+                    consider(list.items[i]);
+                }
+            }
         }
     }catch(e){}
+
+    // Desktop/V8 fallback: Groups.unit is often more complete than team.data().units
+    try{
+        Groups.unit.each(cons(function(unit){
+            consider(unit);
+        }));
+    }catch(eGroups){}
 }
 
 function assignFleetMining(unitTypeName, item, team){
@@ -2077,16 +2109,19 @@ var ModEngineRuntime = (function(){
         }
         if(cmd.indexOf("mining:priority:") === 0){
             var priorityName = cmd.substring("mining:priority:".length);
-            if(ui != null && ui.state != null && ui.state.miningProtocolActive){
-                var priorityItem = null;
-                try{ priorityItem = Vars.content.item(priorityName); }catch(ePr){}
-                if(priorityItem != null){
-                    var reOk = commandUnitMine(playerUnit(), priorityItem, true);
-                    notify(reOk ? ("MINING PRIORITY: " + priorityName.toUpperCase()) : "NO ORE FOUND NEARBY");
-                    return;
-                }
+            if(ui != null && ui.state != null){
+                ui.state.selectedMiningTarget = priorityName;
             }
-            notify("MINING PRIORITY: " + priorityName.toUpperCase());
+            var priorityItem = null;
+            try{ priorityItem = Vars.content.item(priorityName); }catch(ePr){}
+            if(priorityItem == null){
+                notify("INVALID ORE TARGET");
+                return;
+            }
+            // Always apply immediately on PC — do not require protocol already active.
+            var reOk = commandUnitMine(playerUnit(), priorityItem, true);
+            if(ui != null && ui.state != null) ui.state.miningProtocolActive = reOk;
+            notify(reOk ? ("MINING PRIORITY: " + priorityName.toUpperCase()) : "NO ORE FOUND NEARBY / UNIT CANNOT MINE");
             return;
         }
         if(cmd === "mining:fleetToggleItem"){
