@@ -532,7 +532,18 @@ var ModEngineUI = (function(){
     }
 
     function isCompact(){
+        // Treat all mobile + narrow desktop as compact for stacking layouts.
+        try{ if(Vars.mobile) return true; }catch(eMob){}
         return ArcCore.graphics.getWidth() < 1400;
+    }
+
+    function isPhoneWidth(){
+        try{ return ArcCore.graphics.getWidth() < 720; }catch(e){ return state.compact; }
+    }
+
+    function touchButtonHeight(){
+        // ~48dp minimum touch target; slightly larger on mobile.
+        try{ return Vars.mobile ? 52 : 46; }catch(e){ return state.compact ? 50 : 46; }
     }
 
     function textBlockWidth(maxWidth){
@@ -4481,30 +4492,38 @@ var ModEngineUI = (function(){
         var s = getStyles();
         var typeName = String(entry.type.name);
         var p = panel(s.d.panel, gap.md);
+        var phone = isPhoneWidth();
+        var mobile = false;
+        try{ mobile = !!Vars.mobile; }catch(eM){ mobile = state.compact; }
+
         var head = new Table();
         head.left();
         try{
-            head.image(contentDrawable(entry.type, getIcon("units", "factory"))).size(40).padRight(gap.md);
+            head.image(contentDrawable(entry.type, getIcon("units", "factory"))).size(mobile ? 36 : 40).padRight(gap.md);
         }catch(eIcon){}
         var headText = new Table();
         headText.left();
-        headText.add(label(String(entry.type.localizedName).toUpperCase(), s.labelGold, 0.86)).left().row();
+        headText.add(label(String(entry.type.localizedName).toUpperCase(), s.labelGold, mobile ? 0.8 : 0.86)).left().row();
         var countLabel = entry.virtual
-            ? "NO UNITS ON MAP  *  READY TO ASSIGN"
-            : (entry.count + " UNITS  *  " + entry.mining + " MINING");
-        headText.add(label(countLabel, s.labelMuted, 0.68)).left().padTop(gap.xs);
+            ? "NO UNITS ON MAP"
+            : (entry.count + " UNITS * " + entry.mining + " MINING");
+        headText.add(label(countLabel, s.labelMuted, 0.66)).left().padTop(gap.xs);
         try{
-            var tier = entry.type.mineTier;
-            headText.add(label("MINE TIER " + tier, s.labelDim, 0.62)).left().padTop(gap.xs);
+            headText.add(label("TIER " + entry.type.mineTier, s.labelDim, 0.6)).left().padTop(2);
         }catch(eTier){}
         head.add(headText).growX();
         p.add(head).growX().row();
 
         var currentAssignment = state.fleetAssignments[typeName];
         if(!Array.isArray(currentAssignment)) currentAssignment = currentAssignment ? [currentAssignment] : [];
+
+        // Mobile: 3 columns of flexible tiles. Desktop: 4 fixed-ish tiles.
+        var cols = phone ? 3 : (mobile ? 3 : 4);
+        var tileH = mobile ? 64 : 70;
         var assignRow = new Table();
-        assignRow.left();
+        assignRow.left().top();
         var drawn = 0;
+
         for(var i = 0; i < resourceOptions.length; i++){
             (function(item, idx){
                 if(item == null) return;
@@ -4513,17 +4532,15 @@ var ModEngineUI = (function(){
                 var tooHard = false;
                 try{ tooHard = item.hardness > entry.type.mineTier; }catch(eHard){}
 
-                // Desktop-friendly TextButton tiles (more reliable hit targets than nested Button+Table).
                 var caption = String(item.localizedName || item.name).toUpperCase();
-                if(caption.length > 8) caption = caption.substring(0, 7) + ".";
-                var style = selected ? s.primary : (tooHard ? s.action : s.action);
+                if(phone && caption.length > 6) caption = caption.substring(0, 5) + ".";
+                else if(caption.length > 8) caption = caption.substring(0, 7) + ".";
+
+                var style = selected ? s.primary : s.action;
                 var b = new TextButton(caption, style);
                 try{ b.setChecked(selected); }catch(eChk){}
-                try{ b.getLabel().setFontScale(0.68); }catch(eScale){}
+                try{ b.getLabel().setFontScale(phone ? 0.58 : 0.66); }catch(eScale){}
                 b.clicked(run(function(){
-                    if(tooHard && !selected){
-                        // Still allow click so runtime can show "tier too low" toast consistently.
-                    }
                     var list = state.fleetAssignments[typeName];
                     if(!Array.isArray(list)) list = list ? [list] : [];
                     var pos = list.indexOf(itemName);
@@ -4534,40 +4551,40 @@ var ModEngineUI = (function(){
                         list.push(itemName);
                         callHandler("command", {command: "mining:fleetToggleItem", unitType: typeName, item: itemName, enabled: true});
                     }
-                    if(list.length === 0){
-                        delete state.fleetAssignments[typeName];
-                    }else{
-                        state.fleetAssignments[typeName] = list;
-                    }
+                    if(list.length === 0) delete state.fleetAssignments[typeName];
+                    else state.fleetAssignments[typeName] = list;
                     rebuildContent();
                 }));
 
-                // Icon + text stack for better PC readability.
                 try{
                     b.clearChildren();
                     b.top();
                     var iconBack = new Table();
                     iconBack.background(selected ? s.d.panelCyan : s.d.panelDark);
-                    iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(26).color(contentColor(item, theme.cyan));
-                    b.add(iconBack).size(42).padTop(4).row();
-                    b.add(label(caption, selected ? s.labelCyan : (tooHard ? s.labelDim : s.labelMuted), 0.62)).padBottom(4);
+                    iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(mobile ? 24 : 26).color(contentColor(item, theme.cyan));
+                    b.add(iconBack).size(mobile ? 38 : 42).padTop(3).row();
+                    b.add(label(caption, selected ? s.labelCyan : (tooHard ? s.labelDim : s.labelMuted), phone ? 0.56 : 0.62)).padBottom(3);
                 }catch(eChildren){}
 
-                assignRow.add(b).size(74, 70).padRight(gap.xs).padTop(gap.xs);
+                // growX so mobile cards fill width evenly without horizontal overflow.
+                assignRow.add(b).height(tileH).growX().padRight(gap.xs).padTop(gap.xs);
                 drawn++;
-                if(drawn % 4 === 0) assignRow.row();
+                if(drawn % cols === 0) assignRow.row();
             })(resourceOptions[i], i);
         }
+
         var clearBtn = textButton("CLR", s.danger, function(){
             delete state.fleetAssignments[typeName];
             callHandler("command", {command: "mining:fleetClear", unitType: typeName});
             rebuildContent();
         });
-        assignRow.add(clearBtn).size(74, 70).padTop(gap.xs);
-        p.add(assignRow).left().growX().padTop(gap.md).row();
+        assignRow.add(clearBtn).height(tileH).growX().padTop(gap.xs);
+        p.add(assignRow).growX().padTop(gap.md).row();
 
-        var statusText = currentAssignment.length > 0 ? ("TARGET: " + currentAssignment.map(function(n){ return n.toUpperCase(); }).join(", ")) : "NO_ASSIGNMENT — click an ore";
-        p.add(label(statusText, currentAssignment.length > 0 ? s.labelCyan : s.labelDim, 0.7)).left().padTop(gap.sm);
+        var statusText = currentAssignment.length > 0
+            ? ("TARGET: " + currentAssignment.map(function(n){ return n.toUpperCase(); }).join(", "))
+            : (mobile ? "TAP ORE TO ASSIGN" : "NO_ASSIGNMENT — click an ore");
+        p.add(label(statusText, currentAssignment.length > 0 ? s.labelCyan : s.labelDim, 0.68)).left().padTop(gap.sm).wrap().growX();
         return p;
     }
 
@@ -4815,8 +4832,18 @@ var ModEngineUI = (function(){
 
     function buildMining(parent){
         var s = getStyles();
-        parent.add(label("Extraction Protocol", s.label, 1.72)).left().row();
-        parent.add(wrappedLabel("PROTOCOL: FLEET-WIDE RESOURCE HARVESTING. CLICK AN ORE BUTTON ON A UNIT CARD TO ASSIGN MINING TARGETS (PC + MOBILE).", s.labelDim, 0.78)).width(textBlockWidth(900)).left().padTop(gap.sm).row();
+        var mobile = false;
+        try{ mobile = !!Vars.mobile; }catch(eMob){ mobile = state.compact; }
+        var phone = isPhoneWidth();
+        var btnH = touchButtonHeight();
+
+        parent.add(label("Extraction Protocol", s.label, mobile ? 1.35 : 1.72)).left().row();
+        parent.add(wrappedLabel(
+            mobile
+                ? "TAP an ore on the pilot block or on a fleet card to assign mining."
+                : "PROTOCOL: FLEET-WIDE RESOURCE HARVESTING. CLICK AN ORE BUTTON TO ASSIGN MINING TARGETS (PC + MOBILE).",
+            s.labelDim, 0.78
+        )).width(textBlockWidth(900)).left().padTop(gap.sm).row();
 
         var split = new Table();
         split.top().left();
@@ -4824,20 +4851,30 @@ var ModEngineUI = (function(){
         var left = new Table();
         left.top().left();
 
-        var drill = panel(s.d.panelCyan, gap.xl);
+        var drill = panel(s.d.panelCyan, mobile ? gap.lg : gap.xl);
         drill.add(label("DRILL_OPTIMIZATION", s.label, 0.98)).left().row();
-        var boost1 = toggleTextButton(state.miningDrillBoost ? "BUILD_SPEED_MULTIPLIER: ACTIVE" : "BUILD_SPEED_MULTIPLIER: INACTIVE", state.miningDrillBoost ? s.primary : s.action, state.miningDrillBoost, function(){
-            state.miningDrillBoost = !state.miningDrillBoost;
-            callHandler("command", {command: "mining:buildBoost", value: state.miningDrillBoost});
-            rebuildContent();
-        });
-        drill.add(boost1).growX().height(56).padTop(gap.xl).row();
-        var boost2 = toggleTextButton(state.miningEfficiencyBoost ? "EXTRACTION_EFFICIENCY: ACTIVE" : "EXTRACTION_EFFICIENCY: INACTIVE", state.miningEfficiencyBoost ? s.primary : s.action, state.miningEfficiencyBoost, function(){
-            state.miningEfficiencyBoost = !state.miningEfficiencyBoost;
-            callHandler("command", {command: "mining:efficiency", value: state.miningEfficiencyBoost});
-            rebuildContent();
-        });
-        drill.add(boost2).growX().height(56).padTop(gap.md).row();
+        var boost1 = toggleTextButton(
+            state.miningDrillBoost ? (phone ? "BUILD SPD: ON" : "BUILD_SPEED_MULTIPLIER: ACTIVE") : (phone ? "BUILD SPD: OFF" : "BUILD_SPEED_MULTIPLIER: INACTIVE"),
+            state.miningDrillBoost ? s.primary : s.action,
+            state.miningDrillBoost,
+            function(){
+                state.miningDrillBoost = !state.miningDrillBoost;
+                callHandler("command", {command: "mining:buildBoost", value: state.miningDrillBoost});
+                rebuildContent();
+            }
+        );
+        drill.add(boost1).growX().height(btnH + 6).padTop(gap.lg).row();
+        var boost2 = toggleTextButton(
+            state.miningEfficiencyBoost ? (phone ? "EFFICIENCY: ON" : "EXTRACTION_EFFICIENCY: ACTIVE") : (phone ? "EFFICIENCY: OFF" : "EXTRACTION_EFFICIENCY: INACTIVE"),
+            state.miningEfficiencyBoost ? s.primary : s.action,
+            state.miningEfficiencyBoost,
+            function(){
+                state.miningEfficiencyBoost = !state.miningEfficiencyBoost;
+                callHandler("command", {command: "mining:efficiency", value: state.miningEfficiencyBoost});
+                rebuildContent();
+            }
+        );
+        drill.add(boost2).growX().height(btnH + 6).padTop(gap.md).row();
         drill.add(liveSliderBlock("GLOBAL_MINE_SPEED", 1, 12, 0.1, state.miningSpeed, function(v){ return "x" + v.toFixed(1); }, "", "", "", theme.cyan, function(v){
             state.miningSpeed = v;
             callHandler("command", {command: "mining:setSpeed", value: v});
@@ -4845,43 +4882,66 @@ var ModEngineUI = (function(){
         left.add(drill).growX().row();
 
         // Player-unit quick mining (works even when no fleet is present).
-        var pilot = panel(s.d.panelGold, gap.lg);
-        pilot.add(label("CONTROLLED UNIT MINING", s.labelGold, 0.9)).left().row();
-        pilot.add(wrappedLabel("Assign ore to the unit you currently control. Useful on PC when command-mode fleet cards are empty.", s.labelMuted, 0.78)).growX().padTop(gap.sm).row();
+        var pilot = panel(s.d.panelGold, mobile ? gap.md : gap.lg);
+        pilot.add(label(phone ? "PILOT MINING" : "CONTROLLED UNIT MINING", s.labelGold, 0.9)).left().row();
+        pilot.add(wrappedLabel(
+            mobile ? "Tap ore for the unit you control right now." : "Assign ore to the unit you currently control.",
+            s.labelMuted, 0.78
+        )).growX().padTop(gap.sm).row();
         var pilotStatus = playerMiningStatus();
-        pilot.add(label("UNIT: " + pilotStatus.name + (pilotStatus.active ? "  *  MINING" : "  *  IDLE"), pilotStatus.active ? s.labelCyan : s.labelDim, 0.72)).left().padTop(gap.md).row();
+        pilot.add(label("UNIT: " + pilotStatus.name + (pilotStatus.active ? " * MINING" : " * IDLE"), pilotStatus.active ? s.labelCyan : s.labelDim, 0.72)).left().padTop(gap.md).row();
 
         var resourceOptions = collectMineableItems();
+        // Cap ore list on phone so the screen stays usable.
+        var pilotOres = resourceOptions;
+        if(phone && resourceOptions.length > 12){
+            pilotOres = resourceOptions.slice(0, 12);
+        }
+
         var pilotRow = new Table();
-        pilotRow.left();
-        for(var pi = 0; pi < resourceOptions.length; pi++){
+        pilotRow.left().top();
+        var pilotCols = phone ? 2 : (state.compact ? 2 : 3);
+        for(var pi = 0; pi < pilotOres.length; pi++){
             (function(item, idx){
                 if(item == null) return;
                 var selected = state.selectedMiningTarget === String(item.name);
                 var caption = String(item.localizedName || item.name).toUpperCase();
-                if(caption.length > 9) caption = caption.substring(0, 8) + ".";
+                if(phone && caption.length > 8) caption = caption.substring(0, 7) + ".";
+                else if(caption.length > 9) caption = caption.substring(0, 8) + ".";
                 var btn = toggleTextButton(caption, selected ? s.primary : s.action, selected, function(){
                     state.selectedMiningTarget = String(item.name);
                     callHandler("command", {command: "mining:priority:" + item.name});
                     callHandler("command", {command: "mining:applyGlobalBuffs"});
                     rebuildContent();
                 });
-                try{ btn.getLabel().setFontScale(0.7); }catch(eScale){}
-                pilotRow.add(btn).height(44).minWidth(96).padRight(gap.xs).padTop(gap.xs);
-                if((idx + 1) % (state.compact ? 2 : 3) === 0) pilotRow.row();
-            })(resourceOptions[pi], pi);
+                try{ btn.getLabel().setFontScale(phone ? 0.64 : 0.7); }catch(eScale){}
+                pilotRow.add(btn).height(btnH).growX().padRight(gap.xs).padTop(gap.xs);
+                if((idx + 1) % pilotCols === 0) pilotRow.row();
+            })(pilotOres[pi], pi);
         }
         pilot.add(pilotRow).growX().padTop(gap.md).row();
+
         var pilotActions = new Table();
         pilotActions.left();
-        pilotActions.add(textButton("START / RETARGET", s.primary, function(){
-            callHandler("command", {command: "mining:applyGlobalBuffs"});
-            rebuildContent();
-        })).height(46).growX().padRight(gap.sm);
-        pilotActions.add(textButton("STOP", s.danger, function(){
-            callHandler("command", {command: "mining:stopProtocol"});
-            rebuildContent();
-        })).height(46).minWidth(110);
+        if(phone){
+            pilotActions.add(textButton("START", s.primary, function(){
+                callHandler("command", {command: "mining:applyGlobalBuffs"});
+                rebuildContent();
+            })).height(btnH).growX().row();
+            pilotActions.add(textButton("STOP", s.danger, function(){
+                callHandler("command", {command: "mining:stopProtocol"});
+                rebuildContent();
+            })).height(btnH).growX().padTop(gap.sm);
+        }else{
+            pilotActions.add(textButton("START / RETARGET", s.primary, function(){
+                callHandler("command", {command: "mining:applyGlobalBuffs"});
+                rebuildContent();
+            })).height(btnH).growX().padRight(gap.sm);
+            pilotActions.add(textButton("STOP", s.danger, function(){
+                callHandler("command", {command: "mining:stopProtocol"});
+                rebuildContent();
+            })).height(btnH).minWidth(110);
+        }
         pilot.add(pilotActions).growX().padTop(gap.md);
         left.add(pilot).growX().padTop(gap.lg).row();
 
@@ -4901,8 +4961,8 @@ var ModEngineUI = (function(){
         var minerCard = summaryCard("MINER_TYPES", String(realTypes > 0 ? realTypes : fleetTypes.length), s.label, s.d.panel);
         var activeCard = summaryCard("UNITS_MINING", totalActive + " / " + totalMiners, s.label, s.d.panel);
         if(state.compact){
-            summaryRow.add(minerCard).growX().height(90).row();
-            summaryRow.add(activeCard).growX().height(90).padTop(gap.md);
+            summaryRow.add(minerCard).growX().height(84).row();
+            summaryRow.add(activeCard).growX().height(84).padTop(gap.md);
         }else{
             summaryRow.add(minerCard).width(150).height(90).padRight(gap.md);
             summaryRow.add(activeCard).width(150).height(90);
@@ -4912,21 +4972,28 @@ var ModEngineUI = (function(){
 
         var right = new Table();
         right.top().left();
-        var fleetPanel = panel(s.d.panelCyan, gap.xl);
-        fleetPanel.add(sectionHeader("MINING FLEET", "CLICK ORE TO ASSIGN", getIcon("pick", "hammer"))).growX().row();
-        fleetPanel.add(wrappedLabel("Each card lists ores the unit tier can request. On desktop, prefer the text/ore buttons below — they use larger hit targets.", s.labelMuted, 0.78)).growX().padTop(gap.sm).row();
+        var fleetPanel = panel(s.d.panelCyan, mobile ? gap.lg : gap.xl);
+        fleetPanel.add(sectionHeader("MINING FLEET", mobile ? "TAP ORE" : "CLICK ORE TO ASSIGN", getIcon("pick", "hammer"))).growX().row();
+        fleetPanel.add(wrappedLabel(
+            mobile
+                ? "Each card is one unit type. Tap ores to toggle. CLR clears assignment."
+                : "Each card lists ores the unit tier can request. Larger buttons for reliable PC/mobile hits.",
+            s.labelMuted, 0.78
+        )).growX().padTop(gap.sm).row();
 
         if(fleetTypes.length === 0){
             fleetPanel.add(wrappedLabel("No mining-capable unit types found. Spawn Mono/Poly/Mega (or any unit with mineTier >= 0).", s.labelMuted, 0.86)).growX().padTop(gap.lg);
         }else{
             var fleetList = new Table();
             fleetList.top().left();
-            // Desktop: always 1 column so ore grids stay fully visible and clickable.
-            var fleetCols = 1;
+            var shown = 0;
             for(var fi = 0; fi < fleetTypes.length; fi++){
                 // Skip pure virtual catalog spam if we already have live units.
                 if(fleetTypes[fi].virtual && realTypes > 0) continue;
-                fleetList.add(fleetMinerCard(fleetTypes[fi], resourceOptions)).growX().minWidth(state.compact ? 0 : 420).top().padRight(gap.md).padBottom(gap.md).row();
+                // On phone keep list short: live units first, then at most a few virtuals.
+                if(fleetTypes[fi].virtual && phone && shown >= 6) continue;
+                fleetList.add(fleetMinerCard(fleetTypes[fi], resourceOptions)).growX().top().padBottom(gap.md).row();
+                shown++;
             }
             var fleetPane = new ScrollPane(fleetList, getStyles().pane);
             fleetPane.setScrollingDisabled(true, false);
@@ -4934,14 +5001,14 @@ var ModEngineUI = (function(){
                 fleetPane.setFadeScrollBars(false);
                 fleetPane.setOverscroll(false, false);
             }catch(ePane){}
-            fleetPanel.add(fleetPane).growX().height(state.compact ? 520 : 640).padTop(gap.lg);
+            // Nested scroll heights tuned for phone / tablet / desktop.
+            var fleetH = phone ? 420 : (state.compact ? 500 : 640);
+            fleetPanel.add(fleetPane).growX().height(fleetH).padTop(gap.lg);
         }
         right.add(fleetPanel).growX().row();
 
-        left.setClip(true);
-        right.setClip(true);
-
-        if(state.compact){
+        // Always stack on mobile/compact so nothing is clipped off-screen.
+        if(state.compact || mobile){
             split.add(left).growX().row();
             split.add(right).growX().padTop(gap.lg);
         }else{
