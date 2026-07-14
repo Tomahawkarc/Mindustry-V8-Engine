@@ -1,8 +1,9 @@
 {
   "name": "mod-engine",
   "displayName": "Mod Engine",
-  "author": "antipavroma-droid",
-  "description": "Rhino/JS control engine and interface for Mindustry V8.",
-  "version": "1.0.0",
-  "minGameVersion": "154"
+  "author": "Tomahawk",
+  "version": "1.1.0",
+  "minGameVersion": "154",
+  "hidden": false,
+  "description": "Rhino/JS control engine + NexusOS UI for Mindustry V8.\n\n[accent]Core features[]\n• [cyan]Home[] — sector status, live core item flow, power balance\n• [cyan]Waves[] — force waves, auto-wave, composition preview\n• [cyan]World[] — time of day, wind, weather, sector capture tools\n• [cyan]Items / Units[] — inject items, spawn units, mod content filters\n• [cyan]Player / Weapon[] — pilot stats, unit weapon & turret tuning\n• [cyan]Mining[] — fleet ore assignment (multi-ore stances)\n• [cyan]Inspector[] — content browser with pagination (lower PAGE SIZE if laggy)\n• [cyan]Builds[] — instant build, structure godmode, mass selection actions\n• [cyan]Radius[] — turret/unit range overlays (shield-style non-stacking)\n• [cyan]Console[] — in-game Rhino JS terminal\n\n[accent]Tips[]\n• First launch shows a bilingual welcome dialog (EN/RU).\n• Inspector lag? Set page size to [green]20–40[].\n• Use nav modes: [accent]USUAL[] / [scarlet]SANDBOX[] / ALL.\n\n[gray]JS-only mod. No Java classpath required.[]"
 }
