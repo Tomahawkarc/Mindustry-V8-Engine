@@ -25,9 +25,9 @@ var rangeShaderFailed = false;
 var rangeBuffer = null;
 var rangeUseFbo = true;
 
-function copyColor(src, alpha){
+function setDrawColor(src, alpha){
     var c = src == null ? Color.white : src;
-    return new Color(c.r, c.g, c.b, alpha == null ? 1 : alpha);
+    Draw.color(c.r, c.g, c.b, alpha == null ? c.a : alpha);
 }
 
 function ensureBuffer(){
@@ -145,13 +145,13 @@ function rangeCircle(x, y, radius, color, alpha, phase){
 
         if(fboActive()){
             // Solid opaque fill into private FBO — shader turns overlaps into a single union edge.
-            Draw.color(copyColor(color, 1));
+            setDrawColor(color, 1);
             Fill.circle(x, y, radius);
         }else{
             // Safe fallback: soft fill + outline (no FBO, no crash).
-            Draw.color(copyColor(color, Math.min(0.10, a * 0.22)));
+            setDrawColor(color, Math.min(0.10, a * 0.22));
             Fill.circle(x, y, radius);
-            Draw.color(copyColor(color, 0.75));
+            setDrawColor(color, 0.75);
             Drawf.dashCircle(x, y, radius, color);
         }
         Draw.reset();
@@ -163,7 +163,7 @@ function rangeCircle(x, y, radius, color, alpha, phase){
 function targetMarker(x, y, primary, secondary){
     withOverlay(function(){
         var pulse = 11 + Mathf.absin(Time.time, 6, 3);
-        Draw.color(copyColor(primary, 0.14));
+        setDrawColor(primary, 0.14);
         Fill.circle(x, y, pulse + 6);
         Drawf.dashCircle(x, y, pulse + 2, primary);
         Draw.color(primary);
@@ -183,9 +183,9 @@ function selectionRect(x1, y1, x2, y2, color){
     withOverlay(function(){
         var minX = Math.min(x1, x2), minY = Math.min(y1, y2);
         var width = Math.abs(x2 - x1), height = Math.abs(y2 - y1);
-        Draw.color(copyColor(color, 0.055));
+        setDrawColor(color, 0.055);
         Fill.rect(minX + width / 2, minY + height / 2, width, height);
-        Draw.color(copyColor(color, 0.9));
+        setDrawColor(color, 0.9);
         Lines.stroke(1.5);
         Drawf.dashRect(color, minX, minY, width, height);
         Draw.reset();
