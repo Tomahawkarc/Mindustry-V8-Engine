@@ -533,18 +533,18 @@ var ModEngineUI = (function(){
     }
 
     function isCompact(){
-        // Treat all mobile + narrow desktop as compact for stacking layouts.
-        try{ if(Vars.mobile) return true; }catch(eMob){}
-        return ArcCore.graphics.getWidth() < 1400;
+        // Keep one UI for every platform. The menu must look like the PC layout on mobile too;
+        // only individual scroll panes should handle small screens, not a separate compact menu tree.
+        return false;
     }
 
     function isPhoneWidth(){
-        try{ return ArcCore.graphics.getWidth() < 720; }catch(e){ return state.compact; }
+        // Desktop layout is intentional even on phones/tablets.
+        return false;
     }
 
     function touchButtonHeight(){
-        // ~48dp minimum touch target; slightly larger on mobile.
-        try{ return Vars.mobile ? 52 : 46; }catch(e){ return state.compact ? 50 : 46; }
+        return 46;
     }
 
     function textBlockWidth(maxWidth){
@@ -4427,22 +4427,19 @@ var ModEngineUI = (function(){
         var s = getStyles();
         var typeName = String(entry.type.name);
         var p = panel(s.d.panel, gap.md);
-        var phone = isPhoneWidth();
-        var mobile = false;
-        try{ mobile = !!Vars.mobile; }catch(eM){ mobile = state.compact; }
 
         var head = new Table();
         head.left();
         try{
-            head.image(contentDrawable(entry.type, getIcon("units", "factory"))).size(mobile ? 36 : 40).padRight(gap.md);
+            head.image(contentDrawable(entry.type, getIcon("units", "factory"))).size(40).padRight(gap.md);
         }catch(eIcon){}
         var headText = new Table();
         headText.left();
-        headText.add(label(String(entry.type.localizedName).toUpperCase(), s.labelGold, mobile ? 0.8 : 0.86)).left().row();
+        headText.add(label(String(entry.type.localizedName).toUpperCase(), s.labelGold, 0.86)).left().row();
         var countLabel = entry.virtual
             ? "NO UNITS ON MAP"
-            : (entry.count + " UNITS * " + entry.mining + " MINING");
-        headText.add(label(countLabel, s.labelMuted, 0.66)).left().padTop(gap.xs);
+            : (entry.count + " UNITS  *  " + entry.mining + " MINING");
+        headText.add(label(countLabel, s.labelMuted, 0.68)).left().padTop(gap.xs);
         try{
             headText.add(label("TIER " + entry.type.mineTier, s.labelDim, 0.6)).left().padTop(2);
         }catch(eTier){}
@@ -4452,13 +4449,8 @@ var ModEngineUI = (function(){
         var currentAssignment = state.fleetAssignments[typeName];
         if(!Array.isArray(currentAssignment)) currentAssignment = currentAssignment ? [currentAssignment] : [];
 
-        // Mobile: 3 columns of flexible tiles. Desktop: 4 fixed-ish tiles.
-        var cols = phone ? 3 : (mobile ? 3 : 4);
-        var tileH = mobile ? 64 : 70;
         var assignRow = new Table();
-        assignRow.left().top();
-        var drawn = 0;
-
+        assignRow.left();
         for(var i = 0; i < resourceOptions.length; i++){
             (function(item, idx){
                 if(item == null) return;
@@ -4467,14 +4459,8 @@ var ModEngineUI = (function(){
                 var tooHard = false;
                 try{ tooHard = item.hardness > entry.type.mineTier; }catch(eHard){}
 
-                var caption = String(item.localizedName || item.name).toUpperCase();
-                if(phone && caption.length > 6) caption = caption.substring(0, 5) + ".";
-                else if(caption.length > 8) caption = caption.substring(0, 7) + ".";
-
-                var style = selected ? s.primary : s.action;
-                var b = new TextButton(caption, style);
-                try{ b.setChecked(selected); }catch(eChk){}
-                try{ b.getLabel().setFontScale(phone ? 0.58 : 0.66); }catch(eScale){}
+                var b = new Button(s.tile);
+                b.setChecked(selected);
                 b.clicked(run(function(){
                     var list = state.fleetAssignments[typeName];
                     if(!Array.isArray(list)) list = list ? [list] : [];
@@ -4486,40 +4472,35 @@ var ModEngineUI = (function(){
                         list.push(itemName);
                         callHandler("command", {command: "mining:fleetToggleItem", unitType: typeName, item: itemName, enabled: true});
                     }
-                    if(list.length === 0) delete state.fleetAssignments[typeName];
-                    else state.fleetAssignments[typeName] = list;
+                    if(list.length === 0){
+                        delete state.fleetAssignments[typeName];
+                    }else{
+                        state.fleetAssignments[typeName] = list;
+                    }
                     rebuildContent();
                 }));
 
-                try{
-                    b.clearChildren();
-                    b.top();
-                    var iconBack = new Table();
-                    iconBack.background(selected ? s.d.panelCyan : s.d.panelDark);
-                    iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(mobile ? 24 : 26).color(contentColor(item, theme.cyan));
-                    b.add(iconBack).size(mobile ? 38 : 42).padTop(3).row();
-                    b.add(label(caption, selected ? s.labelCyan : (tooHard ? s.labelDim : s.labelMuted), phone ? 0.56 : 0.62)).padBottom(3);
-                }catch(eChildren){}
-
-                // growX so mobile cards fill width evenly without horizontal overflow.
-                assignRow.add(b).height(tileH).growX().padRight(gap.xs).padTop(gap.xs);
-                drawn++;
-                if(drawn % cols === 0) assignRow.row();
+                var iconBack = new Table();
+                iconBack.background(selected ? s.d.panelCyan : s.d.panelDark);
+                iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(28).color(tooHard ? theme.dim : contentColor(item, theme.cyan));
+                b.add(iconBack).size(46);
+                assignRow.add(b).size(50).padRight(gap.xs).padTop(gap.xs);
+                if((idx + 1) % 5 === 0) assignRow.row();
             })(resourceOptions[i], i);
         }
 
-        var clearBtn = textButton("CLR", s.danger, function(){
+        var clearBtn = textButton("X", s.danger, function(){
             delete state.fleetAssignments[typeName];
             callHandler("command", {command: "mining:fleetClear", unitType: typeName});
             rebuildContent();
         });
-        assignRow.add(clearBtn).height(tileH).growX().padTop(gap.xs);
-        p.add(assignRow).growX().padTop(gap.md).row();
+        assignRow.add(clearBtn).size(50).padTop(gap.xs);
+        p.add(assignRow).left().padTop(gap.md).row();
 
         var statusText = currentAssignment.length > 0
             ? ("TARGET: " + currentAssignment.map(function(n){ return n.toUpperCase(); }).join(", "))
-            : (mobile ? "TAP ORE TO ASSIGN" : "NO_ASSIGNMENT — click an ore");
-        p.add(label(statusText, currentAssignment.length > 0 ? s.labelCyan : s.labelDim, 0.68)).left().padTop(gap.sm).wrap().growX();
+            : "NO_ASSIGNMENT";
+        p.add(label(statusText, currentAssignment.length > 0 ? s.labelCyan : s.labelDim, 0.7)).left().padTop(gap.sm);
         return p;
     }
 
