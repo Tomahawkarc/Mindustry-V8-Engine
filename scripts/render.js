@@ -25,25 +25,20 @@ var rangeShaderFailed = false;
 var rangeBuffer = null;
 var rangeUseFbo = true;
 
-// Custom FBO for our ranges to avoid conflict with shields
-var rangeFbo = null;
-var rangeFboFailed = false;
-
-function copyColor(src, alpha){
+function setDrawColor(src, alpha){
     var c = src == null ? Color.white : src;
-    return new Color(c.r, c.g, c.b, alpha == null ? 1 : alpha);
+    Draw.color(c.r, c.g, c.b, alpha == null ? c.a : alpha);
 }
 
-function ensureFbo(){
-    if(rangeFbo != null) return rangeFbo;
+function ensureBuffer(){
+    if(rangeBuffer != null) return rangeBuffer;
     try{
-        rangeFbo = new FrameBuffer(Core.graphics.getWidth(), Core.graphics.getHeight());
+        rangeBuffer = new FrameBuffer();
     }catch(e){
-        rangeFbo = null;
-        rangeFboFailed = true;
-        Log.err("Failed to create range FBO: " + e);
+        rangeBuffer = null;
+        rangeUseFbo = false;
     }
-    return rangeFbo;
+    return rangeBuffer;
 }
 
 function shader(){
@@ -76,60 +71,57 @@ function beginRanges(){
     rangePreviousZ = Draw.z();
 
     var sh = shader();
-    var fbo = ensureFbo();
-    
-    if(sh == null || fbo == null || rangeFboFailed){
+    var buf = ensureBuffer();
+    if(sh == null || buf == null || !rangeUseFbo){
         Draw.z(rangeLayer);
         return;
     }
 
     try{
-        // Use our own FBO instead of Vars.renderer.effectBuffer
-        fbo.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
-        fbo.begin(Color.clear);
-        Draw.z(rangeLayer);
-    }catch(eBegin){
-        rangeFboFailed = true;
-        try{ if(fbo.isBound && fbo.isBound()) fbo.end(); }catch(eEnd){}
-        Draw.z(rangeLayer);
+        // Own FBO + own z-range, never touch Vars.renderer.effectBuffer.
+        Draw.drawRange(rangeLayer, 0.5, function(){
+            try{
+                buf.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
+                buf.begin(Color.clear);
+            }catch(eBegin){
+                // If begin still fails for any reason, disable FBO path for this session.
+                rangeUseFbo = false;
+                try{ if(buf.isBound && buf.isBound()) buf.end(); }catch(eEnd){}
+            }
+        }, function(){
+            try{
+                if(!rangeUseFbo) return;
+                buf.end();
+                try{
+                    sh.bind();
+                    sh.setUniformf("u_time", Time.time);
+                    sh.setUniformf("u_offset",
+                        Core.camera.position.x - Core.camera.width / 2,
+                        Core.camera.position.y - Core.camera.height / 2
+                    );
+                    sh.setUniformf("u_texsize", Core.camera.width, Core.camera.height);
+                    sh.setUniformf("u_invsize", 1 / Core.camera.width, 1 / Core.camera.height);
+                    try{ sh.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ sh.setUniformf("u_dp", 1); }
+                    sh.setUniformf("u_alpha", 1.0);
+                }catch(eUniform){}
+                buf.blit(sh);
+            }catch(eEnd){
+                rangeUseFbo = false;
+            }
+        });
+    }catch(eRange){
+        rangeUseFbo = false;
+        try{ Log.err("Mod Engine range drawRange failed", eRange); }catch(eLog2){}
     }
+    Draw.z(rangeLayer);
 }
 
 function endRanges(){
     if(!rangeBatch) return;
-    
-    var sh = shader();
-    var fbo = ensureFbo();
-    
-    try{
-        Draw.flush();
-        fbo.end();
-        
-        if(sh != null && fbo != null && !rangeFboFailed){
-            // Bind shader and blit our FBO to screen
-            sh.bind();
-            sh.setUniformf("u_time", Time.time);
-            sh.setUniformf("u_offset",
-                Core.camera.position.x - Core.camera.width / 2,
-                Core.camera.position.y - Core.camera.height / 2
-            );
-            sh.setUniformf("u_texsize", Core.camera.width, Core.camera.height);
-            sh.setUniformf("u_invsize", 1 / Core.camera.width, 1 / Core.camera.height);
-            try{ sh.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ sh.setUniformf("u_dp", 1); }
-            sh.setUniformf("u_alpha", 1.0);
-            
-            // Draw our FBO texture to screen with correct blending
-            Draw.color();
-            Draw.rect(fbo.getTexture(), Core.camera.position.x, Core.camera.position.y, Core.camera.width, -Core.camera.height);
-        }
-    }catch(e){
-        rangeFboFailed = true;
-        Log.err("Mod Engine range draw failed", e);
-    }finally{
-        Draw.reset();
-        Draw.z(rangePreviousZ);
-        rangeBatch = false;
-    }
+    try{ Draw.flush(); }catch(eFlush){}
+    Draw.reset();
+    Draw.z(rangePreviousZ);
+    rangeBatch = false;
 }
 
 function withOverlay(drawer){
@@ -142,7 +134,7 @@ function withOverlay(drawer){
 }
 
 function fboActive(){
-    return rangeBatch && !rangeFboFailed && rangeShader != null && rangeFbo != null;
+    return rangeBatch && rangeUseFbo && rangeShader != null && rangeBuffer != null;
 }
 
 function rangeCircle(x, y, radius, color, alpha, phase){
@@ -152,14 +144,14 @@ function rangeCircle(x, y, radius, color, alpha, phase){
         Draw.z(rangeLayer);
 
         if(fboActive()){
-            // Solid opaque fill into our FBO — shader turns overlaps into a single union edge.
-            Draw.color(copyColor(color, 1));
+            // Solid opaque fill into private FBO — shader turns overlaps into a single union edge.
+            setDrawColor(color, 1);
             Fill.circle(x, y, radius);
         }else{
             // Safe fallback: soft fill + outline (no FBO, no crash).
-            Draw.color(copyColor(color, Math.min(0.10, a * 0.22)));
+            setDrawColor(color, Math.min(0.10, a * 0.22));
             Fill.circle(x, y, radius);
-            Draw.color(copyColor(color, 0.75));
+            setDrawColor(color, 0.75);
             Drawf.dashCircle(x, y, radius, color);
         }
         Draw.reset();
@@ -171,7 +163,7 @@ function rangeCircle(x, y, radius, color, alpha, phase){
 function targetMarker(x, y, primary, secondary){
     withOverlay(function(){
         var pulse = 11 + Mathf.absin(Time.time, 6, 3);
-        Draw.color(copyColor(primary, 0.14));
+        setDrawColor(primary, 0.14);
         Fill.circle(x, y, pulse + 6);
         Drawf.dashCircle(x, y, pulse + 2, primary);
         Draw.color(primary);
@@ -191,9 +183,9 @@ function selectionRect(x1, y1, x2, y2, color){
     withOverlay(function(){
         var minX = Math.min(x1, x2), minY = Math.min(y1, y2);
         var width = Math.abs(x2 - x1), height = Math.abs(y2 - y1);
-        Draw.color(copyColor(color, 0.055));
+        setDrawColor(color, 0.055);
         Fill.rect(minX + width / 2, minY + height / 2, width, height);
-        Draw.color(copyColor(color, 0.9));
+        setDrawColor(color, 0.9);
         Lines.stroke(1.5);
         Drawf.dashRect(color, minX, minY, width, height);
         Draw.reset();
