@@ -96,7 +96,7 @@ var ModEngineUI = (function(){
         inspectorCategory: "all",
         inspectorPlanet: "all",
         inspectorPage: 0,
-        inspectorPageSize: 100,
+        inspectorPageSize: 40,
         inspectorGroupOpen: false,
         inspectorBranch: "deployments",
         inspectorModKind: "items",
@@ -214,6 +214,11 @@ var ModEngineUI = (function(){
         return out;
     }
 
+    function setDrawColor(src, alpha){
+        var c = src == null ? theme.text : src;
+        Draw.color(c.r, c.g, c.b, alpha == null ? c.a : alpha);
+    }
+
     function makeDrawable(fill, stroke, strokeWidth, accent, brackets){
         var background = fill;
         var border = stroke;
@@ -225,24 +230,24 @@ var ModEngineUI = (function(){
             draw: function(x, y, width, height){
                 var opacity = 1;
                 try{ opacity = Math.max(0.55, Math.min(1, state.menuOpacity)); }catch(eOpacity){ opacity = 1; }
-                Draw.color(copyColor(background, (background == null ? 1 : background.a) * opacity));
+                setDrawColor(background, (background == null ? 1 : background.a) * opacity);
                 Fill.rect(x + width / 2, y + height / 2, width, height);
 
                 if(lineWidth > 0){
-                    Draw.color(copyColor(border, (border == null ? 1 : border.a) * opacity));
+                    setDrawColor(border, (border == null ? 1 : border.a) * opacity);
                     Lines.stroke(lineWidth);
                     Lines.rect(x + lineWidth / 2, y + lineWidth / 2, width - lineWidth, height - lineWidth);
                 }
 
                 if(accentColor != null){
-                    Draw.color(copyColor(accentColor, (accentColor.a == null ? 1 : accentColor.a) * opacity));
+                    setDrawColor(accentColor, (accentColor.a == null ? 1 : accentColor.a) * opacity);
                     Fill.rect(x + width / 2, y + height - 1.5, width, 3);
                 }
 
                 if(drawBrackets){
                     var size = Math.min(18, Math.min(width, height) * 0.22);
                     var edge = accentColor == null ? border : accentColor;
-                    Draw.color(copyColor(edge, (edge == null ? 1 : edge.a) * opacity));
+                    setDrawColor(edge, (edge == null ? 1 : edge.a) * opacity);
                     Lines.stroke(2);
                     Lines.line(x, y + height, x + size, y + height);
                     Lines.line(x, y + height, x, y + height - size);
@@ -1316,8 +1321,8 @@ var ModEngineUI = (function(){
         rebuildFlowRows(true);
         flowPanel.update(run(function(){
             flowTick++;
-            // ~6–7 Hz is enough for item flow and much cheaper than full rebuild each frame.
-            if(flowTick % 10 !== 0) return;
+            if(flowTick < 30) return;
+            flowTick = 0;
             rebuildFlowRows(false);
         }));
 
@@ -1352,7 +1357,7 @@ var ModEngineUI = (function(){
         var powerRefreshTimer = 0;
         settings.update(run(function(){
             powerRefreshTimer++;
-            if(powerRefreshTimer < 18) return; // ~0.3s at 60fps - scanning all buildings isn't needed every frame
+            if(powerRefreshTimer < 60) return;
             powerRefreshTimer = 0;
             refreshPowerRow(netPowerBalance());
         }));
@@ -1892,8 +1897,17 @@ var ModEngineUI = (function(){
         timerText.add(label("SECONDS", s.labelMuted, 0.7)).center().padTop(gap.xs);
         timer.add(gauge);
         timer.add(timerText);
+        var waveTimerTick = 0;
+        var lastWaveTimerText = waveCountdownText();
         timer.update(run(function(){
-            timeLabel.setText(waveCountdownText());
+            waveTimerTick++;
+            if(waveTimerTick < 12) return;
+            waveTimerTick = 0;
+            var nextText = waveCountdownText();
+            if(nextText !== lastWaveTimerText){
+                lastWaveTimerText = nextText;
+                timeLabel.setText(nextText);
+            }
         }));
         p.add(timer).size(260).center().row();
 
@@ -2564,7 +2578,11 @@ var ModEngineUI = (function(){
             flowValueLabel.setStyle(flowIsNegative ? s.labelRed : s.labelCyan);
         }
         refreshItemStatus();
+        var itemStatusTimer = 0;
         status.update(run(function(){
+            itemStatusTimer++;
+            if(itemStatusTimer < 15) return;
+            itemStatusTimer = 0;
             refreshItemStatus();
         }));
 
@@ -2991,7 +3009,7 @@ var ModEngineUI = (function(){
         dpsBack.background(makeDrawable(theme.panel2, theme.lineSoft, 1, null, false));
         var dpsArc = new Table();
         dpsArc.background(dynamicGaugeDrawable(function(){
-            return Math.min(1, unitStatDps(unitType) / 1500);
+            return Math.min(1, dps / 1500);
         }, theme.red));
         var dpsText = new Table();
         dpsText.center();
@@ -3018,16 +3036,20 @@ var ModEngineUI = (function(){
         actions.add(textButton("DESTRUCT_UNIT", s.danger, function(){ callHandler("unitAction", {action: "destruct", unitType: unitType, unit: worldUnit}); })).height(40).growX().colspan(2).padTop(gap.sm);
         p.add(actions).growX().padTop(gap.md);
 
+        var detailsUpdateTimer = 0;
+        var lastDetailsHp = null;
         p.update(run(function(){
             if(worldUnit == null) return;
+            detailsUpdateTimer++;
+            if(detailsUpdateTimer < 15) return;
+            detailsUpdateTimer = 0;
             var hp = Math.max(0, unitStatValue(unitType, worldUnit));
             var hpText = Math.round(hp) + "";
-            hpValueLabel.setText(hpText);
-            hpValueLabel.setFontScale(gaugeValueScale(hpText, 0.78));
-            var dpsText = Math.round(unitStatDps(unitType)) + "";
-            dpsValueLabel.setText(dpsText);
-            dpsValueLabel.setFontScale(gaugeValueScale(dpsText, 0.78));
-            try{ metaLabel.setText("ID: " + worldUnit.id + "  *  TIER " + (unitType == null ? "?" : unitTier(unitType))); }catch(e){}
+            if(hpText !== lastDetailsHp){
+                lastDetailsHp = hpText;
+                hpValueLabel.setText(hpText);
+                hpValueLabel.setFontScale(gaugeValueScale(hpText, 0.78));
+            }
         }));
         return p;
     }
@@ -3144,7 +3166,7 @@ var ModEngineUI = (function(){
         var updateTimer = 0;
         rootPanel.update(run(function(){
             updateTimer++;
-            if(updateTimer < 6) return;
+            if(updateTimer < 15) return;
             updateTimer = 0;
             try{
                 if(worldUnit.dead || worldUnit.health <= 0){ d.hide(); return; }
@@ -3275,7 +3297,7 @@ var ModEngineUI = (function(){
         var updateTimer = 0;
         rootPanel.update(run(function(){
             updateTimer++;
-            if(updateTimer < 12) return;
+            if(updateTimer < 30) return;
             updateTimer = 0;
             var alive = liveGroupUnits(groupUnits);
             if(alive.length === 0){ d.hide(); return; }
@@ -3502,10 +3524,10 @@ var ModEngineUI = (function(){
         var rowDead = false;
         var rowUpdateTimer = 0;
         row.update(run(function(){
-            // Not every frame - HP/status don't need 60 updates/sec, ~10/sec (every 6 frames)
-            // is plenty visually and drastically cuts cost when hundreds of rows exist at once.
+            // One refresh every half second is enough for list telemetry. Detailed unit
+            // dialogs retain a faster refresh without keeping dozens of rows hot.
             rowUpdateTimer++;
-            if(rowUpdateTimer < 6) return;
+            if(rowUpdateTimer < 30) return;
             rowUpdateTimer = 0;
             var dead = false;
             try{ dead = unit.dead || unit.health <= 0; }catch(e){}
@@ -3690,7 +3712,7 @@ var ModEngineUI = (function(){
         var inspectorWatchTimer = 0;
         list.update(run(function(){
             inspectorWatchTimer++;
-            if(inspectorWatchTimer < 30) return;
+            if(inspectorWatchTimer < 60) return;
             inspectorWatchTimer = 0;
             var nowCount = worldUnitCountCheap();
             // New spawns need a fresh page; deaths are compacted once per frame by deploymentRow.
