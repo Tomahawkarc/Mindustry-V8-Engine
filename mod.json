@@ -1,0 +1,8 @@
+{
+  "name": "mod-engine",
+  "displayName": "Mod Engine",
+  "author": "antipavroma-droid",
+  "description": "Rhino/JS control engine and interface for Mindustry V8.",
+  "version": "1.0.0",
+  "minGameVersion": "154"
+}
