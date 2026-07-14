@@ -2767,14 +2767,20 @@ var ModEngineRuntime = (function(){
             if(ui == null || ui.state == null) return;
             if(!inGame()) return;
             var drawRanges = ui.state.showTurretRadii || ui.state.showUnitRadii;
-            if(drawRanges) ModEngineRender.beginRanges();
+            // begin/end are isolated: private FBO, own z-layer, never touch renderer.effectBuffer
             try{
-                if(ui.state.showTurretRadii) drawTurretRadii();
-            }catch(eT){}
-            try{
-                if(ui.state.showUnitRadii) drawUnitRadii();
-            }catch(eU){}
-            if(drawRanges) ModEngineRender.endRanges();
+                if(drawRanges) ModEngineRender.beginRanges();
+                try{
+                    if(ui.state.showTurretRadii) drawTurretRadii();
+                }catch(eT){}
+                try{
+                    if(ui.state.showUnitRadii) drawUnitRadii();
+                }catch(eU){}
+            }catch(eRanges){
+                try{ Log.err("Mod Engine range draw failed", eRanges); }catch(eLog){}
+            }finally{
+                try{ if(drawRanges) ModEngineRender.endRanges(); }catch(eEnd){}
+            }
             try{ drawTransportOverlay(); }catch(eTransport){}
             try{ drawTargetMarker(); }catch(eMarker){}
             try{
