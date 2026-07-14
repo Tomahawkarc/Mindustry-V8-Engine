@@ -14,8 +14,10 @@ var Table = Packages.arc.scene.ui.layout.Table;
 var Button = Packages.arc.scene.ui.Button;
 var TextButton = Packages.arc.scene.ui.TextButton;
 var ImageButton = Packages.arc.scene.ui.ImageButton;
+var TextField = Packages.arc.scene.ui.TextField;
 var InputListener = Packages.arc.scene.event.InputListener;
 var Touchable = Packages.arc.scene.event.Touchable;
+var KeyCode = Packages.arc.input.KeyCode;
 
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
@@ -485,6 +487,17 @@ var ModEngineRuntime = (function(){
     var buildSelectionArmMillis = 0;
     var buildSelectionInputLayer = null;
     var selectedBuilds = [];
+    var hotkeyIgnoreUntil = 0;
+    var hotkeyBinds = {};
+    var hotkeyDefinitions = [
+        {id: "toggleMenu", key: "tab"},
+        {id: "instantBuild", key: "f4"},
+        {id: "structureGodmode", key: "f5"},
+        {id: "forceWave", key: "f8"},
+        {id: "pauseWaveTimer", key: "p"},
+        {id: "healStructures", key: "h"},
+        {id: "turretRadii", key: "r"}
+    ];
 
     var theme = {
         panel: Color.valueOf("121922"),
@@ -540,6 +553,156 @@ var ModEngineRuntime = (function(){
             Vars.ui.showInfoToast(String(text), 3);
         }catch(e){
             Log.info(String(text));
+        }
+    }
+
+    function hotkeySettingKey(id){
+        return "mod-engine-hotkey-" + id;
+    }
+
+    function hotkeyDefinition(id){
+        for(var i = 0; i < hotkeyDefinitions.length; i++){
+            if(hotkeyDefinitions[i].id === id) return hotkeyDefinitions[i];
+        }
+        return null;
+    }
+
+    function normalizeHotkeyName(name){
+        if(name == null || String(name).length === 0 || String(name) === "unset") return null;
+        try{
+            var code = KeyCode.valueOf(String(name));
+            if(code == KeyCode.unset || code == KeyCode.unknown || code == KeyCode.escape) return null;
+            return String(code.name());
+        }catch(e){
+            return null;
+        }
+    }
+
+    function hotkeySnapshot(){
+        var result = {};
+        for(var i = 0; i < hotkeyDefinitions.length; i++){
+            var id = hotkeyDefinitions[i].id;
+            result[id] = hotkeyBinds[id] == null ? null : hotkeyBinds[id];
+        }
+        return result;
+    }
+
+    function syncHotkeysUi(rebuild){
+        if(ui == null || ui.state == null) return;
+        ui.state.hotkeyBinds = hotkeySnapshot();
+        if(rebuild === true && ui.state.tab === "hotkeys"){
+            try{ ui.rebuild(); }catch(e){}
+        }
+    }
+
+    function loadHotkeys(){
+        for(var i = 0; i < hotkeyDefinitions.length; i++){
+            var def = hotkeyDefinitions[i];
+            var saved = def.key;
+            try{ saved = Core.settings.getString(hotkeySettingKey(def.id), def.key); }catch(eGet){}
+            hotkeyBinds[def.id] = normalizeHotkeyName(saved);
+        }
+    }
+
+    function setHotkey(id, keyName){
+        var def = hotkeyDefinition(id);
+        if(def == null) return false;
+        var normalized = normalizeHotkeyName(keyName);
+
+        if(normalized != null){
+            for(var i = 0; i < hotkeyDefinitions.length; i++){
+                var otherId = hotkeyDefinitions[i].id;
+                if(otherId !== id && hotkeyBinds[otherId] === normalized){
+                    hotkeyBinds[otherId] = null;
+                    try{ Core.settings.put(hotkeySettingKey(otherId), ""); }catch(eConflict){}
+                }
+            }
+        }
+
+        hotkeyBinds[id] = normalized;
+        try{
+            Core.settings.put(hotkeySettingKey(id), normalized == null ? "" : normalized);
+            Core.settings.forceSave();
+        }catch(eSave){}
+        hotkeyIgnoreUntil = Time.millis() + 300;
+        syncHotkeysUi(true);
+        return true;
+    }
+
+    function resetHotkeys(){
+        for(var i = 0; i < hotkeyDefinitions.length; i++){
+            var def = hotkeyDefinitions[i];
+            hotkeyBinds[def.id] = def.key;
+            try{ Core.settings.put(hotkeySettingKey(def.id), def.key); }catch(ePut){}
+        }
+        try{ Core.settings.forceSave(); }catch(eSave){}
+        hotkeyIgnoreUntil = Time.millis() + 300;
+        syncHotkeysUi(true);
+    }
+
+    function keyboardFocusBlocksHotkeys(){
+        try{
+            if(ui != null && ui.state != null && ui.state.hotkeyCaptureActive) return true;
+            var focus = Core.scene.getKeyboardFocus();
+            return focus != null && focus instanceof TextField;
+        }catch(e){
+            return false;
+        }
+    }
+
+    function executeHotkey(id){
+        if(id === "toggleMenu"){
+            try{ if(ui != null && ui.toggle != null) ui.toggle(); }catch(eToggle){}
+            return;
+        }
+        if(!inGame()) return;
+
+        if(id === "instantBuild"){
+            var instant = false;
+            try{ instant = !Vars.state.rules.instantBuild; }catch(eInstant){}
+            if(ui != null && ui.state != null) ui.state.buildInstant = instant;
+            callCommand({command: "builds:instant", value: instant});
+            return;
+        }
+        if(id === "structureGodmode"){
+            var godmode = ui != null && ui.state != null ? !ui.state.buildGodmode : false;
+            if(ui != null && ui.state != null) ui.state.buildGodmode = godmode;
+            callCommand({command: "builds:godmode", value: godmode});
+            return;
+        }
+        if(id === "forceWave"){
+            callCommand({command: "waves:run"});
+            return;
+        }
+        if(id === "pauseWaveTimer"){
+            var timerEnabled = false;
+            try{ timerEnabled = !Vars.state.rules.waveTimer; }catch(eTimer){}
+            if(ui != null && ui.state != null) ui.state.autoWave = timerEnabled;
+            callCommand({command: "waves:auto", value: timerEnabled});
+            return;
+        }
+        if(id === "healStructures"){
+            callCommand({command: "builds:healAll"});
+            return;
+        }
+        if(id === "turretRadii"){
+            callCommand({command: "radius:toggleTurrets"});
+        }
+    }
+
+    function processHotkeys(){
+        if(Time.millis() < hotkeyIgnoreUntil || keyboardFocusBlocksHotkeys()) return;
+        for(var i = 0; i < hotkeyDefinitions.length; i++){
+            var def = hotkeyDefinitions[i];
+            var keyName = hotkeyBinds[def.id];
+            if(keyName == null) continue;
+            try{
+                var code = KeyCode.valueOf(String(keyName));
+                if(Core.input.keyTap(code)){
+                    executeHotkey(def.id);
+                    break;
+                }
+            }catch(eKey){}
         }
     }
 
@@ -1075,51 +1238,36 @@ var ModEngineRuntime = (function(){
                 d.weapon.inaccuracy = d.inaccuracy;
                 if(d.weapon.bullet != null){
                     d.weapon.bullet.damage = d.damage;
-                    d.weapon.bullet.speed = d.speed;
-                    d.weapon.bullet.lifetime = d.lifetime;
+                    d.weapon.bullet.range = d.bulletRange;
+                    d.weapon.bullet.maxRange = d.bulletMaxRange;
+                    d.weapon.bullet.speed = d.bulletSpeed;
+                    d.weapon.bullet.lifetime = d.bulletLifetime;
                 }
             }catch(e){}
         }
     }
 
-    function buffWeapons(){
+    function buffWeapons(fireRate, inaccuracy, damage, targetRange){
         captureOriginals();
+        var safeRate = Math.max(0.2, Math.min(50, fireRate == null ? 1 : fireRate));
         for(var i = 0; i < weaponDefaults.length; i++){
             var d = weaponDefaults[i];
             try{
-                d.weapon.reload = Math.max(1, d.reload * 0.48);
-                d.weapon.inaccuracy = 0.5;
+                // Use the native weapon reload path for every mount. A one-tick floor avoids
+                // zero-reload bullet floods and preserves mirrored/alternating weapon logic.
+                d.weapon.reload = Math.max(1, d.reload / safeRate);
+                d.weapon.inaccuracy = inaccuracy;
                 if(d.weapon.bullet != null){
-                    d.weapon.bullet.damage = Math.max(d.damage, 45);
-                    if(d.weapon.bullet.speed > 0 && d.weapon.bullet.lifetime > 0){
-                        d.weapon.bullet.lifetime = Math.max(d.lifetime, d.lifetime * 1.2);
+                    d.weapon.bullet.damage = Math.max(d.damage, damage == null ? d.damage : damage);
+                    if(targetRange != null && targetRange > 0){
+                        var speed = d.weapon.bullet.speed > 0 ? d.weapon.bullet.speed : (d.bulletSpeed > 0 ? d.bulletSpeed : 1);
+                        d.weapon.bullet.lifetime = targetRange / speed;
+                        d.weapon.bullet.range = targetRange;
+                        d.weapon.bullet.maxRange = targetRange;
                     }
                 }
             }catch(e){}
         }
-    }
-
-    function applyTeamInstantReload(enabled){
-        if(!enabled) return;
-        var team = playerTeam();
-        if(team == null) return;
-        try{
-            var data = team.data();
-            if(data == null || data.units == null) return;
-            var list = data.units;
-            for(var i = 0; i < list.size; i++){
-                try{
-                    var unit = list.items[i];
-                    if(unit == null) continue;
-                    var mounts = null;
-                    try{ mounts = unit.mounts(); }catch(eM){ try{ mounts = unit.mounts; }catch(eM2){} }
-                    if(mounts == null) continue;
-                    for(var m = 0; m < mounts.length; m++){
-                        try{ mounts[m].reload = 0; }catch(eMount){}
-                    }
-                }catch(eInner){}
-            }
-        }catch(e){}
     }
 
     function eachWorldBuild(fn){
@@ -1944,49 +2092,18 @@ var ModEngineRuntime = (function(){
         }
         if(cmd === "weapon:applyUnits"){
             if(ui != null && ui.state != null){
-                ui.state.weaponInstantReload = true;
                 Vars.state.rules.unitDamageMultiplier = Math.max(1, ui.state.weaponGlobalDamage);
-                applyTeamInstantReload(true);
-                captureOriginals();
-                for(var wi2 = 0; wi2 < weaponDefaults.length; wi2++){
-                    var wd2 = weaponDefaults[wi2];
-                    try{
-                        if(wd2.weapon.bullet == null) continue;
-                        wd2.weapon.inaccuracy = ui.state.weaponSpread;
-                        wd2.weapon.bullet.damage = Math.max(wd2.damage, ui.state.weaponBulletDamage);
-                        if(ui.state.weaponRange > 0){
-                            // реальная дальность = speed * lifetime, поэтому пересчитываем lifetime
-                            // под желаемую дальность при текущей скорости пули
-                            var wSpeed = wd2.weapon.bullet.speed > 0 ? wd2.weapon.bullet.speed : (wd2.bulletSpeed > 0 ? wd2.bulletSpeed : 1);
-                            wd2.weapon.bullet.lifetime = ui.state.weaponRange / wSpeed;
-                            wd2.weapon.bullet.range = ui.state.weaponRange; // синхронно для UI/статов
-                            if(wd2.weapon.bullet.maxRange > 0) wd2.weapon.bullet.maxRange = ui.state.weaponRange;
-                        }
-                    }catch(eApplyWeapon){}
-                }
+                buffWeapons(ui.state.unitFireRate, ui.state.weaponSpread, ui.state.weaponBulletDamage, ui.state.weaponRange);
             }
-            notify("UNIT INSTANT RELOAD ENABLED (OWN TEAM ONLY)");
+            notify("UNIT WEAPON PARAMETERS APPLIED");
             return;
         }
         if(cmd === "weapon:resetUnits"){
-            applyTeamInstantReload(false);
             Vars.state.rules.unitDamageMultiplier = 1;
-            for(var wi3 = 0; wi3 < weaponDefaults.length; wi3++){
-                var wd3 = weaponDefaults[wi3];
-                try{
-                    wd3.weapon.inaccuracy = wd3.inaccuracy;
-                    if(wd3.weapon.bullet != null){
-                        wd3.weapon.bullet.damage = wd3.damage;
-                        wd3.weapon.bullet.range = wd3.bulletRange;
-                        wd3.weapon.bullet.maxRange = wd3.bulletMaxRange;
-                        wd3.weapon.bullet.lifetime = wd3.bulletLifetime;
-                        wd3.weapon.bullet.speed = wd3.bulletSpeed;
-                    }
-                }catch(eResetWeapon){}
-            }
+            resetWeapons();
             if(ui != null && ui.state != null){
                 ui.state.weaponGlobalDamage = 1.0;
-                ui.state.weaponInstantReload = false;
+                ui.state.unitFireRate = 1.0;
                 var su = ui.state.selectedUnit;
                 if(su != null && su.weapons != null && su.weapons.size > 0){
                     try{
@@ -2231,10 +2348,32 @@ var ModEngineRuntime = (function(){
             return;
         }
         if(cmd.indexOf("hotkeys:") === 0){
-            if(cmd === "hotkeys:saveExit"){
-                try{ if(ui != null) ui.hide(); }catch(e){}
+            if(cmd === "hotkeys:set"){
+                var bindId = payload.id == null ? "" : String(payload.id);
+                if(setHotkey(bindId, payload.key)){
+                    var savedKey = hotkeyBinds[bindId];
+                    var displayKey = savedKey == null ? "NONE" : String(savedKey).toUpperCase();
+                    try{ if(savedKey != null) displayKey = String(KeyCode.valueOf(savedKey).getName()).toUpperCase(); }catch(eDisplay){}
+                    notify("HOTKEY " + bindId.toUpperCase() + ": " + displayKey);
+                }
+                return;
             }
-            notify("HOTKEYS EXEC: " + cmd.substring(8));
+            if(cmd === "hotkeys:unbind"){
+                var unbindId = payload.id == null ? "" : String(payload.id);
+                if(setHotkey(unbindId, null)) notify("HOTKEY " + unbindId.toUpperCase() + ": NONE");
+                return;
+            }
+            if(cmd === "hotkeys:resetAll"){
+                resetHotkeys();
+                notify("HOTKEYS RESET TO DEFAULTS");
+                return;
+            }
+            if(cmd === "hotkeys:saveExit"){
+                try{ Core.settings.forceSave(); }catch(eSave){}
+                try{ if(ui != null) ui.hide(); }catch(e){}
+                notify("HOTKEYS SAVED");
+                return;
+            }
             return;
         }
 
@@ -2490,13 +2629,10 @@ var ModEngineRuntime = (function(){
 
     function bindHandlers(modUi){
         ui = modUi;
+        loadHotkeys();
         modUi.configure({
+            hotkeys: hotkeySnapshot(),
             handlers: {
-                initialize: function(){
-                    forceRules();
-                    Vars.state.rules.infiniteResources = true;
-                    notify("MOD ENGINE INITIALIZED");
-                },
                 openDocs: function(){
                     try{ Vars.ui.showInfoText("Mod Engine", "Mindustry V8 runtime controls are active."); }catch(e){ notify("DOCS UNAVAILABLE"); }
                 },
@@ -2700,6 +2836,7 @@ var ModEngineRuntime = (function(){
         Events.run(Trigger.update, run(function(){
             if(ui == null) return;
             if(!inGame()) return;
+            try{ processHotkeys(); }catch(eHotkeys){}
             try{
                 if(playerDefaults == null) capturePlayerDefaults();
             }catch(eCap){}
@@ -2765,9 +2902,6 @@ var ModEngineRuntime = (function(){
                             deliverCargoToCorePlayerSafe(pu2);
                         }
                     }
-                }
-                if(ui.state != null && ui.state.weaponInstantReload){
-                    applyTeamInstantReload(true);
                 }
             }catch(eRefresh){}
 
