@@ -121,6 +121,7 @@ var ModEngineUI = (function(){
         worldTimeOfDay: 14.33,
         worldWindStrength: 4.2,
         worldSpeedQuickAccess: true,
+        quickItemsQuickAccess: true,
         buildInstant: true,
         welcomeShown: false,
         welcomeLang: "en",
@@ -2575,9 +2576,24 @@ var ModEngineUI = (function(){
             addCommandButton(commandRow, "FILL_ALL_ITEMS", "fillAllItems");
             commandRow.row();
             addCommandButton(commandRow, "CLEAR_CORE_STORAGE", "clearCoreStorage");
+            commandRow.row();
+            var quickItemsCompact = textButton(state.quickItemsQuickAccess ? "ITEM HUD: ON" : "ITEM HUD: OFF", state.quickItemsQuickAccess ? s.primary : s.action, function(){
+                state.quickItemsQuickAccess = !state.quickItemsQuickAccess;
+                callHandler("command", {command: "items:quickHud", value: state.quickItemsQuickAccess});
+                rebuildContent(false);
+            });
+            quickItemsCompact.setChecked(state.quickItemsQuickAccess);
+            commandRow.add(quickItemsCompact).height(46).minWidth(180).padRight(gap.md).padBottom(gap.md);
         }else{
             addCommandButton(commandRow, "FILL_ALL_ITEMS", "fillAllItems");
             addCommandButton(commandRow, "CLEAR_CORE_STORAGE", "clearCoreStorage");
+            var quickItems = textButton(state.quickItemsQuickAccess ? "ITEM HUD: ON" : "ITEM HUD: OFF", state.quickItemsQuickAccess ? s.primary : s.action, function(){
+                state.quickItemsQuickAccess = !state.quickItemsQuickAccess;
+                callHandler("command", {command: "items:quickHud", value: state.quickItemsQuickAccess});
+                rebuildContent(false);
+            });
+            quickItems.setChecked(state.quickItemsQuickAccess);
+            commandRow.add(quickItems).height(46).minWidth(180).padRight(gap.md).padBottom(gap.md);
         }
         commands.add(commandRow).left().padTop(gap.lg);
 
@@ -4195,7 +4211,8 @@ var ModEngineUI = (function(){
         var result = [];
         if(builds.length === 0) return result;
         eachSeq(Vars.content.items(), function(item){
-            var accepted = true;
+            if(item == null || !visibleContent(item)) return;
+            var accepted = false;
             for(var i = 0; i < builds.length; i++){
                 var build = builds[i];
                 var supports = false;
@@ -4210,9 +4227,15 @@ var ModEngineUI = (function(){
                         if(!supports){
                             try{ supports = build.getMaximumAccepted(item) > 0 && !(build.block instanceof Turret); }catch(eMax){}
                         }
+                        if(!supports){
+                            // Unit factories, reconstructors and modded dynamic factories expose
+                            // per-item capacities even when their active plan rejects acceptStack().
+                            try{ supports = build.block.capacities != null && build.block.capacities[item.id] > 0; }catch(eDynamic){}
+                        }
                     }
                 }catch(eBuild){}
-                if(!supports){ accepted = false; break; }
+                // Use the union for mixed selections; runtime fills only compatible builds.
+                if(supports){ accepted = true; break; }
             }
             if(accepted) result.push(item);
         });
