@@ -937,9 +937,14 @@ var ModEngineRuntime = (function(){
         speedHudAnchor = null;
     }
 
+    function rebuildQuickAccessHud(){
+        removeSpeedHud();
+        ensureSpeedHud();
+    }
+
     function ensureSpeedHud(){
         if(Vars.ui == null || Vars.ui.hudGroup == null) return;
-        if(ui == null || ui.state == null || !ui.state.worldSpeedQuickAccess){
+        if(ui == null || ui.state == null || (!ui.state.worldSpeedQuickAccess && !ui.state.quickItemsQuickAccess)){
             removeSpeedHud();
             return;
         }
@@ -954,46 +959,52 @@ var ModEngineRuntime = (function(){
         holder.background(Styles.black6);
         holder.top().left();
 
-        var speedRow = new Table();
-        speedRow.name = "mod-engine-speed";
-        speedRow.margin(6);
-        speedRow.image(Icon.play).size(20).padRight(6);
-        var speedLabel = new Packages.arc.scene.ui.Label("x" + Math.round(timeSpeed), Styles.outlineLabel);
-        speedLabel.setFontScale(0.72);
-        speedLabel.setAlignment(Packages.arc.util.Align.center);
+        var hasPreviousRow = false;
+        if(ui.state.worldSpeedQuickAccess){
+            var speedRow = new Table();
+            speedRow.name = "mod-engine-speed";
+            speedRow.margin(6);
+            speedRow.image(Icon.play).size(20).padRight(6);
+            var speedLabel = new Packages.arc.scene.ui.Label("x" + Math.round(timeSpeed), Styles.outlineLabel);
+            speedLabel.setFontScale(0.72);
+            speedLabel.setAlignment(Packages.arc.util.Align.center);
 
-        var slider = NexusSlider.createNexusSlider(1, 16, 1, timeSpeed, function(value){
-            var next = Math.max(1, Math.round(value));
-            applyGameSpeed(next);
-            if(ui != null && ui.state != null) ui.state.simSpeed = next;
-            speedLabel.setText("x" + next);
-        }, {track: theme.lineSoft, trackHighlight: theme.line, fill: theme.gold, handle: theme.gold, glow: theme.gold});
-        speedRow.add(slider.element).width(230).height(28).padRight(7);
-        speedRow.add(speedLabel).width(38);
-        speedRow.button("x1", Styles.cleart, run(function(){
-            slider.setValue(1, true);
-        })).size(42, 30).padLeft(4);
-        holder.add(speedRow).growX().row();
-        holder.image().color(Pal.gray).height(3).fillX().row();
+            var slider = NexusSlider.createNexusSlider(1, 16, 1, timeSpeed, function(value){
+                var next = Math.max(1, Math.round(value));
+                applyGameSpeed(next);
+                if(ui != null && ui.state != null) ui.state.simSpeed = next;
+                speedLabel.setText("x" + next);
+            }, {track: theme.lineSoft, trackHighlight: theme.line, fill: theme.gold, handle: theme.gold, glow: theme.gold});
+            speedRow.add(slider.element).width(230).height(28).padRight(7);
+            speedRow.add(speedLabel).width(38);
+            speedRow.button("x1", Styles.cleart, run(function(){
+                slider.setValue(1, true);
+            })).size(42, 30).padLeft(4);
+            holder.add(speedRow).width(360).row();
+            hasPreviousRow = true;
+        }
 
-        var itemButton = new Button(Styles.clearNonei);
-        itemButton.name = "mod-engine-quick-items";
-        itemButton.left();
-        var itemIcon = null;
-        try{ itemIcon = Icon.box; }catch(eBox){ try{ itemIcon = Icon.database; }catch(eDb){ itemIcon = Icon.add; } }
-        itemButton.image(itemIcon).size(22).padLeft(10).padRight(8);
-        itemButton.add("QUICK ITEMS").left().growX();
-        itemButton.add("+").color(theme.gold).padLeft(8).padRight(12);
-        itemButton.clicked(run(function(){
-            try{ if(ui != null && ui.showQuickItems != null) ui.showQuickItems(); }catch(eDialog){ Log.err("Quick item dialog failed", eDialog); }
-        }));
-        holder.add(itemButton).growX().height(44).tooltip("Select and add multiple items to the core");
+        if(ui.state.quickItemsQuickAccess){
+            if(hasPreviousRow) holder.image().color(Pal.gray).height(3).fillX().row();
+            var itemButton = new Button(Styles.clearNonei);
+            itemButton.name = "mod-engine-quick-items";
+            itemButton.left();
+            var itemIcon = null;
+            try{ itemIcon = Icon.box; }catch(eBox){ try{ itemIcon = Icon.database; }catch(eDb){ itemIcon = Icon.add; } }
+            itemButton.image(itemIcon).size(22).padLeft(10).padRight(8);
+            itemButton.add("QUICK ITEMS").left().growX();
+            itemButton.add("+").color(theme.gold).padLeft(8).padRight(12);
+            itemButton.clicked(run(function(){
+                try{ if(ui != null && ui.showQuickItems != null) ui.showQuickItems(); }catch(eDialog){ Log.err("Quick item dialog failed", eDialog); }
+            }));
+            holder.add(itemButton).width(360).height(44).tooltip("Select base or modded items and add them to the core");
+        }
         holder.pack();
         speedHudRoot.addChild(holder);
 
         speedHudRoot.update(run(function(){
             try{
-                speedHudRoot.visible = inGame() && Vars.ui.hudfrag.shown && ui != null && ui.state != null && ui.state.worldSpeedQuickAccess;
+                speedHudRoot.visible = inGame() && Vars.ui.hudfrag.shown && ui != null && ui.state != null && (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
                 if(!speedHudRoot.visible) return;
                 if(speedHudAnchor == null || !speedHudAnchor.hasParent()) speedHudAnchor = Vars.ui.hudGroup.find("statustable");
                 if(speedHudAnchor != null){
@@ -1801,14 +1812,24 @@ var ModEngineRuntime = (function(){
                         }catch(eAmmo){ Log.err("Turret ammo fill failed", eAmmo); }
                     }else{
                         var compatible = false;
+                        var capacity = 0;
                         try{ compatible = build.block.consumesItem(item); }catch(eConsume){}
                         if(!compatible){
                             try{ compatible = build.acceptStack(item, 1, Vars.player) > 0; }catch(eAccept){}
                         }
+                        try{ capacity = Math.max(0, build.getMaximumAccepted(item)); }catch(eMax){}
+                        if(!compatible && capacity > 0) compatible = true;
+                        if(!compatible){
+                            // Dynamic unit factories/reconstructors (including modded variants)
+                            // often reject acceptStack while idle, but still expose item capacities.
+                            try{
+                                capacity = Math.max(capacity, build.block.capacities[item.id]);
+                                compatible = capacity > 0;
+                            }catch(eDynamic){}
+                        }
                         if(!compatible || build.items == null) continue;
-                        var capacity = 0;
-                        try{ capacity = Math.max(1, build.getMaximumAccepted(item)); }catch(eMax){}
                         if(capacity <= 0){ try{ capacity = Math.max(1, build.block.itemCapacity); }catch(eCap){} }
+                        capacity = Math.max(1, Math.round(capacity));
                         build.items.set(item, capacity);
                         affected++;
                     }
@@ -1896,7 +1917,12 @@ var ModEngineRuntime = (function(){
         }
         if(cmd === "world:speedHud"){
             if(ui != null && ui.state != null) ui.state.worldSpeedQuickAccess = !!payload.value;
-            if(payload.value) ensureSpeedHud(); else removeSpeedHud();
+            rebuildQuickAccessHud();
+            return;
+        }
+        if(cmd === "items:quickHud"){
+            if(ui != null && ui.state != null) ui.state.quickItemsQuickAccess = !!payload.value;
+            rebuildQuickAccessHud();
             return;
         }
                 if(cmd === "world:timeOfDay"){
@@ -2729,14 +2755,12 @@ var ModEngineRuntime = (function(){
     }
 
     function drawTurretRadii(){
-        var team = playerTeam();
         try{
             Groups.build.each(cons(function(build){
                 try{
                     if(build.block == null || !(build.block instanceof Turret)) return;
                     var buildTeam = null;
                     try{ buildTeam = build.team(); }catch(eT){ buildTeam = build.team; }
-                    if(team != null && buildTeam != null && buildTeam != team) return;
                     var color = buildTeam != null ? buildTeam.color : Color.white;
                     drawRadiusCircle(build.x, build.y, build.block.range, color, 0.4, build.id);
                 }catch(eInner){}
@@ -2745,16 +2769,13 @@ var ModEngineRuntime = (function(){
     }
 
     function drawUnitRadii(){
-        var team = playerTeam();
-        if(team == null) return;
         try{
-            var data = team.data();
-            if(data == null || data.units == null) return;
-            var list = data.units;
-            for(var i = 0; i < list.size; i++){
+            Groups.unit.each(cons(function(unit){
                 try{
-                    var unit = list.items[i];
-                    if(unit == null || unit.type == null) continue;
+                    if(unit == null || unit.type == null) return;
+                    var unitTeam = null;
+                    try{ unitTeam = unit.team(); }catch(eTeam){ unitTeam = unit.team; }
+                    var teamColor = unitTeam != null ? unitTeam.color : Color.white;
                     var weaponRange = 0;
                     try{ if(unit.type.maxRange > 0) weaponRange = unit.type.maxRange; }catch(eMaxRange){}
                     try{ if(unit.type.range > 0) weaponRange = Math.max(weaponRange, unit.type.range); }catch(eTypeRange){}
@@ -2777,17 +2798,17 @@ var ModEngineRuntime = (function(){
                         }
                     }catch(eW){}
                     if(weaponRange > 0){
-                        drawRadiusCircle(unit.x, unit.y, weaponRange, theme.gold, 0.3, unit.id);
+                        drawRadiusCircle(unit.x, unit.y, weaponRange, teamColor, 0.34, unit.id);
                     }
                     if(unit.type.mineTier >= 0 && unit.type.mineSpeed > 0){
                         var mineRange = 0;
                         try{ mineRange = unit.type.mineRange; }catch(eM){}
                         if(mineRange > 0){
-                            drawRadiusCircle(unit.x, unit.y, mineRange, theme.cyan, 0.3, unit.id + 17);
+                            drawRadiusCircle(unit.x, unit.y, mineRange, teamColor, 0.24, unit.id + 17);
                         }
                     }
                 }catch(eInner){}
-            }
+            }));
         }catch(e){}
     }
 
