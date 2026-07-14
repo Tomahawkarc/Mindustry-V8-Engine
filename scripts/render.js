@@ -16,11 +16,14 @@ var Log = Packages.arc.util.Log;
 
 var rangeBatch = false;
 var rangePreviousZ = 0;
-// Use a layer that doesn't conflict with shields (Layer.shields = 110)
-var rangeLayer = Layer.overlayUI - 5; // Far enough from shields
+// CRITICAL: must NOT overlap native Layer.shields drawRange (shields .. shields+1),
+// which already begins Vars.renderer.effectBuffer. Using the shared buffer there
+// causes: IllegalArgumentException: Do not begin() twice.
+var rangeLayer = Layer.overlayUI - 2.5;
 var rangeShader = null;
 var rangeShaderFailed = false;
-
+var rangeBuffer = null;
+var rangeUseFbo = true;
 
 // Custom FBO for our ranges to avoid conflict with shields
 var rangeFbo = null;
@@ -75,18 +78,15 @@ function beginRanges(){
     var sh = shader();
     var fbo = ensureFbo();
     
-    // Fallback to direct rendering if FBO failed
     if(sh == null || fbo == null || rangeFboFailed){
         Draw.z(rangeLayer);
         return;
     }
 
     try{
-        // Use our own FBO, completely isolated from Vars.renderer.effectBuffer
+        // Use our own FBO instead of Vars.renderer.effectBuffer
         fbo.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
         fbo.begin(Color.clear);
-        
-        // Draw ranges into our FBO
         Draw.z(rangeLayer);
     }catch(eBegin){
         rangeFboFailed = true;
@@ -102,12 +102,11 @@ function endRanges(){
     var fbo = ensureFbo();
     
     try{
-        // End drawing to our FBO
         Draw.flush();
         fbo.end();
         
-        // Blit our FBO to screen
         if(sh != null && fbo != null && !rangeFboFailed){
+            // Bind shader and blit our FBO to screen
             sh.bind();
             sh.setUniformf("u_time", Time.time);
             sh.setUniformf("u_offset",
@@ -119,13 +118,13 @@ function endRanges(){
             try{ sh.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ sh.setUniformf("u_dp", 1); }
             sh.setUniformf("u_alpha", 1.0);
             
-            // Draw our FBO texture to screen
+            // Draw our FBO texture to screen with correct blending
             Draw.color();
             Draw.rect(fbo.getTexture(), Core.camera.position.x, Core.camera.position.y, Core.camera.width, -Core.camera.height);
         }
     }catch(e){
         rangeFboFailed = true;
-        Log.err("Failed to end ranges: " + e);
+        Log.err("Mod Engine range draw failed", e);
     }finally{
         Draw.reset();
         Draw.z(rangePreviousZ);
@@ -142,18 +141,31 @@ function withOverlay(drawer){
     }
 }
 
-
+function fboActive(){
+    return rangeBatch && !rangeFboFailed && rangeShader != null && rangeFbo != null;
+}
 
 function rangeCircle(x, y, radius, color, alpha, phase){
     if(radius <= 0) return;
-    
-    var a = alpha == null ? 0.35 : alpha;
-    Draw.z(rangeLayer);
-    
-    // Always draw solid fill - our FBO will handle the shader effect
-    Draw.color(copyColor(color, 1));
-    Fill.circle(x, y, radius);
-    Draw.reset();
+    function drawRange(){
+        var a = alpha == null ? 0.35 : alpha;
+        Draw.z(rangeLayer);
+
+        if(fboActive()){
+            // Solid opaque fill into our FBO — shader turns overlaps into a single union edge.
+            Draw.color(copyColor(color, 1));
+            Fill.circle(x, y, radius);
+        }else{
+            // Safe fallback: soft fill + outline (no FBO, no crash).
+            Draw.color(copyColor(color, Math.min(0.10, a * 0.22)));
+            Fill.circle(x, y, radius);
+            Draw.color(copyColor(color, 0.75));
+            Drawf.dashCircle(x, y, radius, color);
+        }
+        Draw.reset();
+    }
+    if(rangeBatch) drawRange();
+    else withOverlay(drawRange);
 }
 
 function targetMarker(x, y, primary, secondary){
