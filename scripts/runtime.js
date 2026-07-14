@@ -491,6 +491,10 @@ var ModEngineRuntime = (function(){
     var selectedBuilds = [];
     var externalHudProbeTimer = 0;
     var externalHudBottom = null;
+    var hudVisibilityCacheTime = -9999;
+    var hudVisibilityCache = false;
+    var hudProbePoint = new Vec2();
+    var unitRangeCache = {};
     var hotkeyIgnoreUntil = 0;
     var hotkeyBinds = {};
     var hotkeyDefinitions = [
@@ -567,11 +571,15 @@ var ModEngineRuntime = (function(){
     }
 
     function modHudVisible(){
+        var now = Time.millis();
+        if(now - hudVisibilityCacheTime < 50) return hudVisibilityCache;
+        hudVisibilityCacheTime = now;
         try{
-            return inGame() && Vars.ui != null && Vars.ui.hudfrag != null && Vars.ui.hudfrag.shown && !fullMapShown();
+            hudVisibilityCache = inGame() && Vars.ui != null && Vars.ui.hudfrag != null && Vars.ui.hudfrag.shown && !fullMapShown();
         }catch(e){
-            return false;
+            hudVisibilityCache = false;
         }
+        return hudVisibilityCache;
     }
 
     function restoreColoredModMetadata(){
@@ -824,11 +832,13 @@ var ModEngineRuntime = (function(){
             var ew = element.getWidth(), eh = element.getHeight();
             var stageW = Core.scene.getWidth(), stageH = Core.scene.getHeight();
             if(!skipCandidate && effectivelyVisible(element) && ew >= 70 && eh >= 18 && ew < stageW * 0.72 && eh < stageH * 0.45){
-                var p = new Vec2();
-                p.set(0, 0);
-                element.localToStageCoordinates(p);
-                var overlap = Math.min(x + width, p.x + ew) - Math.max(x, p.x);
-                if(overlap >= 28) out.push({bottom: p.y, top: p.y + eh});
+                hudProbePoint.set(0, 0);
+                element.localToStageCoordinates(hudProbePoint);
+                var overlap = Math.min(x + width, hudProbePoint.x + ew) - Math.max(x, hudProbePoint.x);
+                if(overlap >= 28){
+                    out.push(hudProbePoint.y);
+                    out.push(hudProbePoint.y + eh);
+                }
             }
         }catch(eBounds){}
 
@@ -849,10 +859,10 @@ var ModEngineRuntime = (function(){
         // Follow only panels that form a contiguous vertical chain under the native HUD.
         for(var pass = 0; pass < 12; pass++){
             var next = boundary;
-            for(var i = 0; i < obstacles.length; i++){
-                var obstacle = obstacles[i];
-                if(obstacle.bottom < boundary - 0.5 && obstacle.top >= boundary - 12 && obstacle.top <= boundary + 12){
-                    next = Math.min(next, obstacle.bottom);
+            for(var i = 0; i < obstacles.length; i += 2){
+                var bottom = obstacles[i], top = obstacles[i + 1];
+                if(bottom < boundary - 0.5 && top >= boundary - 12 && top <= boundary + 12){
+                    next = Math.min(next, bottom);
                 }
             }
             if(next >= boundary - 0.5) break;
@@ -880,17 +890,24 @@ var ModEngineRuntime = (function(){
         hudRoot.addChild(extension);
 
         var position = new Vec2();
+        var menuHudTick = 0;
+        var menuHudShown = null;
         hudRoot.update(run(function(){
             try{
                 var shown = modHudVisible() && anchor != null && anchor.hasParent();
                 // Keep the updater root alive. Hiding the root itself can prevent it from
                 // becoming visible again after the full-screen minimap closes on some builds.
                 hudRoot.visible = true;
-                extension.visible = shown;
+                if(shown !== menuHudShown){
+                    menuHudShown = shown;
+                    extension.visible = shown;
+                }
                 if(!shown) return;
+                menuHudTick++;
+                if(menuHudTick < 10) return;
+                menuHudTick = 0;
                 position.set(0, 0);
                 anchor.localToStageCoordinates(position);
-                extension.pack();
                 extension.setPosition(position.x + anchor.getWidth(), position.y + anchor.getHeight() - extension.getHeight());
             }catch(ePosition){}
         }));
@@ -1006,12 +1023,20 @@ var ModEngineRuntime = (function(){
         holder.pack();
         quickHudRoot.addChild(holder);
         var pos = new Vec2();
+        var quickHudTick = 0;
+        var quickHudShown = null;
         quickHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
                 quickHudRoot.visible = true;
-                holder.visible = enabled;
+                if(enabled !== quickHudShown){
+                    quickHudShown = enabled;
+                    holder.visible = enabled;
+                }
                 if(!enabled) return;
+                quickHudTick++;
+                if(quickHudTick < 10) return;
+                quickHudTick = 0;
                 if(quickHudAnchor == null || !quickHudAnchor.hasParent()) quickHudAnchor = findCommandHudButton(Vars.ui.hudGroup);
                 if(quickHudAnchor != null){
                     pos.set(0, 0);
@@ -1104,24 +1129,32 @@ var ModEngineRuntime = (function(){
         holder.pack();
         speedHudRoot.addChild(holder);
 
+        var speedHudTick = 0;
+        var speedHudShown = null;
+        var speedHudPoint = new Vec2();
         speedHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
                 speedHudRoot.visible = true;
-                holder.visible = enabled;
+                if(enabled !== speedHudShown){
+                    speedHudShown = enabled;
+                    holder.visible = enabled;
+                }
                 if(!enabled) return;
+                speedHudTick++;
+                if(speedHudTick < 10) return;
+                speedHudTick = 0;
                 if(speedHudAnchor == null || !speedHudAnchor.hasParent()) speedHudAnchor = Vars.ui.hudGroup.find("statustable");
                 if(speedHudAnchor != null){
-                    var p = new Vec2();
-                    p.set(0, 0);
-                    speedHudAnchor.localToStageCoordinates(p);
-                    externalHudProbeTimer++;
-                    if(externalHudBottom == null || externalHudProbeTimer >= 15){
+                    speedHudPoint.set(0, 0);
+                    speedHudAnchor.localToStageCoordinates(speedHudPoint);
+                    externalHudProbeTimer += 10;
+                    if(externalHudBottom == null || externalHudProbeTimer >= 180){
                         externalHudProbeTimer = 0;
-                        externalHudBottom = hudStackBottom(speedHudAnchor, p.y, p.x, holder.getWidth());
+                        externalHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth());
                     }
                     // If another mod already extends the status HUD downward, continue its stack.
-                    holder.setPosition(p.x, externalHudBottom - holder.getHeight());
+                    holder.setPosition(speedHudPoint.x, externalHudBottom - holder.getHeight());
                 }else{
                     holder.setPosition(Core.scene.marginLeft + 8, Core.scene.getHeight() - Core.scene.marginTop - holder.getHeight() - 84);
                 }
@@ -1449,6 +1482,18 @@ var ModEngineRuntime = (function(){
             }catch(e){}
         });
         return healed;
+    }
+
+    function maintainStructureGodmode(){
+        try{
+            Groups.build.each(cons(function(build){
+                try{
+                    if(build == null || build.health >= build.maxHealth) return;
+                    build.health = build.maxHealth;
+                    try{ build.healthChanged(); }catch(eChanged){}
+                }catch(eBuild){}
+            }));
+        }catch(e){}
     }
 
     function killUnits(filter){
@@ -2266,6 +2311,7 @@ var ModEngineRuntime = (function(){
             if(ui != null && ui.state != null){
                 Vars.state.rules.unitDamageMultiplier = Math.max(1, ui.state.weaponGlobalDamage);
                 buffWeapons(ui.state.unitFireRate, ui.state.weaponSpread, ui.state.weaponBulletDamage, ui.state.weaponRange);
+                unitRangeCache = {};
             }
             notify("UNIT WEAPON PARAMETERS APPLIED");
             return;
@@ -2273,6 +2319,7 @@ var ModEngineRuntime = (function(){
         if(cmd === "weapon:resetUnits"){
             Vars.state.rules.unitDamageMultiplier = 1;
             resetWeapons();
+            unitRangeCache = {};
             if(ui != null && ui.state != null){
                 ui.state.weaponGlobalDamage = 1.0;
                 ui.state.unitFireRate = 1.0;
@@ -2877,6 +2924,40 @@ var ModEngineRuntime = (function(){
         }catch(e){}
     }
 
+    function cachedUnitRanges(type){
+        if(type == null) return {weapon: 0, mine: 0};
+        var key = null;
+        try{ key = String(type.id); }catch(eId){ key = String(type.name); }
+        if(unitRangeCache[key] != null) return unitRangeCache[key];
+
+        var result = {weapon: 0, mine: 0};
+        try{ if(type.maxRange > 0) result.weapon = type.maxRange; }catch(eMaxRange){}
+        try{ if(type.range > 0) result.weapon = Math.max(result.weapon, type.range); }catch(eTypeRange){}
+        try{
+            if(type.weapons != null){
+                for(var wi = 0; wi < type.weapons.size; wi++){
+                    var weapon = type.weapons.items[wi];
+                    if(weapon == null || weapon.bullet == null) continue;
+                    var bulletRange = 0;
+                    try{ bulletRange = Math.max(bulletRange, weapon.bullet.range); }catch(eRange){}
+                    try{ bulletRange = Math.max(bulletRange, weapon.bullet.maxRange); }catch(eBulletMax){}
+                    try{ bulletRange = Math.max(bulletRange, weapon.bullet.rangeOverride); }catch(eOverride){}
+                    try{
+                        if(weapon.bullet.speed > 0 && weapon.bullet.lifetime > 0){
+                            bulletRange = Math.max(bulletRange, weapon.bullet.speed * weapon.bullet.lifetime);
+                        }
+                    }catch(eTravel){}
+                    result.weapon = Math.max(result.weapon, bulletRange);
+                }
+            }
+        }catch(eWeapons){}
+        try{
+            if(type.mineTier >= 0 && type.mineSpeed > 0 && type.mineRange > 0) result.mine = type.mineRange;
+        }catch(eMine){}
+        unitRangeCache[key] = result;
+        return result;
+    }
+
     function drawUnitRadii(){
         try{
             Groups.unit.each(cons(function(unit){
@@ -2885,36 +2966,12 @@ var ModEngineRuntime = (function(){
                     var unitTeam = null;
                     try{ unitTeam = unit.team(); }catch(eTeam){ unitTeam = unit.team; }
                     var teamColor = unitTeam != null ? unitTeam.color : Color.white;
-                    var weaponRange = 0;
-                    try{ if(unit.type.maxRange > 0) weaponRange = unit.type.maxRange; }catch(eMaxRange){}
-                    try{ if(unit.type.range > 0) weaponRange = Math.max(weaponRange, unit.type.range); }catch(eTypeRange){}
-                    try{
-                        if(unit.type.weapons != null){
-                            for(var wi = 0; wi < unit.type.weapons.size; wi++){
-                                var weapon = unit.type.weapons.items[wi];
-                                if(weapon == null || weapon.bullet == null) continue;
-                                var bulletRange = 0;
-                                try{ bulletRange = Math.max(bulletRange, weapon.bullet.range); }catch(eRange){}
-                                try{ bulletRange = Math.max(bulletRange, weapon.bullet.maxRange); }catch(eBulletMax){}
-                                try{ bulletRange = Math.max(bulletRange, weapon.bullet.rangeOverride); }catch(eOverride){}
-                                try{
-                                    if(weapon.bullet.speed > 0 && weapon.bullet.lifetime > 0){
-                                        bulletRange = Math.max(bulletRange, weapon.bullet.speed * weapon.bullet.lifetime);
-                                    }
-                                }catch(eTravel){}
-                                weaponRange = Math.max(weaponRange, bulletRange);
-                            }
-                        }
-                    }catch(eW){}
-                    if(weaponRange > 0){
-                        drawRadiusCircle(unit.x, unit.y, weaponRange, teamColor, 0.34, unit.id);
+                    var ranges = cachedUnitRanges(unit.type);
+                    if(ranges.weapon > 0){
+                        drawRadiusCircle(unit.x, unit.y, ranges.weapon, teamColor, 0.34, unit.id);
                     }
-                    if(unit.type.mineTier >= 0 && unit.type.mineSpeed > 0){
-                        var mineRange = 0;
-                        try{ mineRange = unit.type.mineRange; }catch(eM){}
-                        if(mineRange > 0){
-                            drawRadiusCircle(unit.x, unit.y, mineRange, teamColor, 0.24, unit.id + 17);
-                        }
+                    if(ranges.mine > 0){
+                        drawRadiusCircle(unit.x, unit.y, ranges.mine, teamColor, 0.24, unit.id + 17);
                     }
                 }catch(eInner){}
             }));
@@ -2924,6 +2981,10 @@ var ModEngineRuntime = (function(){
     function installLifecycle(modUi){
         ui = modUi;
         var miningTimer = 0;
+        var hudEnsureTimer = 0;
+        var repairTimer = 0;
+        var godmodeTimer = 0;
+        var cargoTimer = 0;
 
         Events.on(ClientLoadEvent, cons(function(){
             restoreColoredModMetadata();
@@ -2942,6 +3003,7 @@ var ModEngineRuntime = (function(){
 
         Events.on(WorldLoadEvent, cons(function(){
             applyGameSpeed(1);
+            unitRangeCache = {};
             snapshotWeatherRules();
             playerDefaults = null;
             markerLastTapMillis = 0;
@@ -3028,17 +3090,19 @@ var ModEngineRuntime = (function(){
             try{
                 if(playerDefaults == null) capturePlayerDefaults();
             }catch(eCap){}
-            try{
-                if(hudRoot == null || !hudRoot.hasParent()) ensureHudButton();
-            }catch(e){}
-            try{
-                if(ui.state != null && ui.state.quickSelectionEnabled){
-                    if(quickHudRoot == null || !quickHudRoot.hasParent()) ensureQuickSelectionButton();
-                }else if(quickHudRoot != null){
-                    removeQuickHud();
-                }
-            }catch(eQuick){}
-            try{ if(speedHudRoot == null || !speedHudRoot.hasParent()) ensureSpeedHud(); }catch(eSpeedHud){}
+            hudEnsureTimer++;
+            if(hudEnsureTimer >= 60){
+                hudEnsureTimer = 0;
+                try{ if(hudRoot == null || !hudRoot.hasParent()) ensureHudButton(); }catch(e){}
+                try{
+                    if(ui.state != null && ui.state.quickSelectionEnabled){
+                        if(quickHudRoot == null || !quickHudRoot.hasParent()) ensureQuickSelectionButton();
+                    }else if(quickHudRoot != null){
+                        removeQuickHud();
+                    }
+                }catch(eQuick){}
+                try{ if(speedHudRoot == null || !speedHudRoot.hasParent()) ensureSpeedHud(); }catch(eSpeedHud){}
+            }
 
             if(ui.state != null && ui.state.buildSelectionActive){
                 try{
@@ -3055,48 +3119,60 @@ var ModEngineRuntime = (function(){
             }
 
             if(ui.state != null && ui.state.playerAutoRepair){
-                try{
-                    var pu = playerUnit();
-                    if(pu != null && pu.health < pu.maxHealth){
-                        pu.heal(Math.max(1, ui.state.playerRegen / 60));
-                    }
-                }catch(e2){}
+                repairTimer++;
+                if(repairTimer >= 6){
+                    repairTimer = 0;
+                    try{
+                        var pu = playerUnit();
+                        if(pu != null && pu.health < pu.maxHealth) pu.heal(Math.max(1, ui.state.playerRegen / 10));
+                    }catch(e2){}
+                }
+            }else{
+                repairTimer = 0;
             }
 
             if(ui.state != null && ui.state.buildGodmode){
-                try{ healAllStructures(); }catch(e3){}
+                godmodeTimer++;
+                if(godmodeTimer >= 30){
+                    godmodeTimer = 0;
+                    try{ maintainStructureGodmode(); }catch(e3){}
+                }
+            }else{
+                godmodeTimer = 0;
             }
 
-            try{
-                var fleetTeamRefresh = playerTeam();
-                for(var refreshTypeKey in fleetAssignments){
-                    var refreshList = fleetAssignments[refreshTypeKey];
-                    if(!Array.isArray(refreshList)) refreshList = refreshList ? [refreshList] : [];
-                    if(refreshList.length === 0) continue;
-                    eachFleetUnit(refreshTypeKey, fleetTeamRefresh, function(fu){
-                        if(!unitHasMineCommand(fu)){
-                            for(var ri = 0; ri < refreshList.length; ri++){
-                                var refreshItem = null;
-                                try{ refreshItem = Vars.content.item(refreshList[ri]); }catch(eFI){}
-                                if(refreshItem != null) toggleUnitMineItem(fu, refreshItem, true);
-                            }
-                        }
-                    });
-                }
-                if(ui.state != null && ui.state.miningProtocolActive){
+            if(ui.state != null && ui.state.miningProtocolActive){
+                cargoTimer++;
+                if(cargoTimer >= 15){
+                    cargoTimer = 0;
+                    try{
                     var pu2 = playerUnit();
-                    if(pu2 != null){
-                        if(unitCargoFull(pu2)){
-                            deliverCargoToCorePlayerSafe(pu2);
-                        }
-                    }
+                        if(pu2 != null && unitCargoFull(pu2)) deliverCargoToCorePlayerSafe(pu2);
+                    }catch(eCargo){}
                 }
-            }catch(eRefresh){}
+            }else{
+                cargoTimer = 0;
+            }
 
             miningTimer++;
             if(ui.state != null && miningTimer >= 60){
                 miningTimer = 0;
                 try{
+                    var fleetTeamRefresh = playerTeam();
+                    for(var refreshTypeKey in fleetAssignments){
+                        var refreshList = fleetAssignments[refreshTypeKey];
+                        if(!Array.isArray(refreshList)) refreshList = refreshList ? [refreshList] : [];
+                        if(refreshList.length === 0) continue;
+                        eachFleetUnit(refreshTypeKey, fleetTeamRefresh, function(fu){
+                            if(!unitHasMineCommand(fu)){
+                                for(var ri = 0; ri < refreshList.length; ri++){
+                                    var refreshItem = null;
+                                    try{ refreshItem = Vars.content.item(refreshList[ri]); }catch(eFI){}
+                                    if(refreshItem != null) toggleUnitMineItem(fu, refreshItem, true);
+                                }
+                            }
+                        });
+                    }
                     if(ui.state.miningProtocolActive){
                         var mineUnit = playerUnit();
                         if(mineUnit == null || mineUnit.dead){
