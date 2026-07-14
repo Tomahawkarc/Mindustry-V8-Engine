@@ -7,6 +7,7 @@ var Lines = Packages.arc.graphics.g2d.Lines;
 var Log = Packages.arc.util.Log;
 var Time = Packages.arc.util.Time;
 var Mathf = Packages.arc.math.Mathf;
+var Strings = Packages.arc.util.Strings;
 var Jval = Packages.arc.util.serialization.Jval;
 
 var BaseDrawable = Packages.arc.scene.style.BaseDrawable;
@@ -581,9 +582,12 @@ var ModEngineRuntime = (function(){
             if(!metaFile.exists()) metaFile = loaded.root.child("mod.hjson");
             if(!metaFile.exists()) return;
             var raw = Jval.read(metaFile.readString("UTF-8"));
-            loaded.meta.displayName = raw.getString("displayName", loaded.meta.displayName);
-            loaded.meta.author = raw.getString("author", loaded.meta.author);
-            loaded.meta.description = raw.getString("description", loaded.meta.description);
+            // Browser-safe tags use [color[]] so one cleanup pass turns them into
+            // regular [color] markup. Decode that extra layer before installed-mod UI.
+            loaded.meta.displayName = Strings.stripColors(raw.getString("displayName", loaded.meta.displayName));
+            loaded.meta.author = Strings.stripColors(raw.getString("author", loaded.meta.author));
+            loaded.meta.subtitle = Strings.stripColors(raw.getString("subtitle", loaded.meta.subtitle));
+            loaded.meta.description = Strings.stripColors(raw.getString("description", loaded.meta.description));
         }catch(eMeta){
             Log.err("Failed to restore Mod Engine metadata colors", eMeta);
         }
