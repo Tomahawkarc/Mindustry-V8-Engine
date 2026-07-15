@@ -20,30 +20,42 @@ var Log = Packages.arc.util.Log;
 
 var rangeBatch = false;
 var rangePreviousZ = 0;
+// This pass owns its framebuffer and never touches Renderer.effectBuffer.
+var rangeLayer = Layer.overlayUI - 2.5;
 var rangeShader = null;
 var rangeBuffer = null;
 var rangeMaskTexture = null;
 var rangeMaskRegion = null;
 var rangeUseFbo = true;
 var rangeResourcesChecked = false;
+var rangeCaptureStarted = false;
 
 /* =============================================================================
- * SHIELD-SAFE FBO PASS (fix 1.6.1) + SELECTION FIX (green rect)
+ * SHIELD-SAFE FBO PASS (fix 1.6.1)
  *
- * Root cause of broken force shields: old begin/end runnables inside
- * Draw.drawRange() called Draw.flush() — which is re-entrant in the middle
- * of a sorted flush and shuffles the remaining queue entries.
+ * Root cause of the broken force shields: Draw.drawRange() runnables are z-tagged
+ * queue entries that execute MID-FLUSH of the sorted sprite batch (Arc Draw.java:
+ *   drawRange(z, range, begin, end) => draw(z - range, begin); draw(z + range, end)
+ * Mindustry Renderer registers shield/buildBeam captures with ZERO flushes:
+ *   Draw.drawRange(Layer.shields, 1f, () -> effectBuffer.begin(Color.clear), () -> {
+ *       effectBuffer.end(); effectBuffer.blit(Shaders.shield); });
+ * because the sorter itself flushes lower-z sprites before each runnable.
  *
- * Root cause of missing selection rect: after endRanges(), the GL state
- * (texture bindings, shader program) was left in an undefined state, causing
- * subsequent withOverlay() draws (selectionRect, selectedBuild) to either
- * sample the wrong texture or render with the wrong shader — making them
- * invisible.
+ * The old begin/end callbacks called Draw.flush(), Draw.shader(), Draw.blend(),
+ * Draw.reset() — every one of those flushes Core.batch. Flushing the batch from
+ * inside its own sorted flush is re-entrant: the remaining queue entries (the
+ * game's shield runnables at z 124/126, buildBeam at 121/123) are lost or
+ * shuffled, shield polygons never reach effectBuffer and render raw to screen,
+ * which looks like "shields turned into solid filled blobs".
  *
- * Fix: use a private FBO pass WITHOUT Draw.drawRange(). All range circles
- * are drawn directly to the FBO via Draw.rect(mask) on a dedicated Z layer.
- * beginRanges() sets the Z, endRanges() does the blit + restores GL state
- * cleanly. withOverlay() pre-resets GL state so selection draws always work.
+ * Rule: inside begin/end runnables -> pure GL only. Never touch Core.batch.
+ *
+ * Fix 1.6.2: restored selectionRect() and selectedBuild() exports (recovered
+ * verbatim from commit 3690c20 via the jsDelivr minified build). They were lost
+ * when this file was rewritten for the shield fix — runtime's draw hook calls
+ * ModEngineRender.selectionRect(...) every frame while dragging, and the silent
+ * Rhino TypeError made the green build-selection rectangle disappear entirely.
+ * Also restored the original targetMarker secondary dot: Fill.circle(x, y, 2.8).
  * ============================================================================= */
 
 function setDrawColor(src, alpha){
@@ -66,9 +78,14 @@ function ensureRangeResources(){
             return false;
         }
 
+        // Compile from source strings. This path cannot accidentally resolve to an atlas
+        // error/nomap region, which is possible when image helpers are used for a shader file.
         rangeShader = new Shader(vert.readString(), frag.readString());
         rangeBuffer = new FrameBuffer();
 
+        // Never use Fill.circle() for the FBO mask: it resolves the atlas "circle"
+        // region and may return the nomap/error sprite in modded atlas configurations.
+        // This private texture is generated once and cannot resolve to any atlas icon.
         var maskPixmap = new Pixmap(128, 128);
         maskPixmap.fillCircle(64, 64, 63, Color.whiteRgba);
         rangeMaskTexture = new Texture(maskPixmap);
@@ -89,128 +106,118 @@ function ensureRangeResources(){
     }
 }
 
-// Полный сброс GL-состояния: сбрасываем шейдер, blend, текстуры.
-function fullGlReset(){
+// GL-only state repair. Safe inside sorted-flush runnables: it never calls
+// Draw.flush()/Draw.shader()/Draw.blend()/Draw.reset(), so Core.batch is untouched.
+// The ScreenQuad blit leaves the range texture and our shader bound; subsequent
+// queued sprites (overlayUI 120, buildBeam 121-123, shields 124-126, weather 130)
+// would sample them because SpriteBatch caches its texture/program lazily.
+function restoreGlState(){
     try{
-        Draw.shader(null);
-        Draw.blend();
-        Draw.color(Color.white);
-        Draw.mixColor();
-        // Перепривязываем белую текстуру атласа
-        try{
-            var wt = Core.atlas.white();
-            if(wt != null && wt.texture != null) wt.texture.bind(0);
-        }catch(eBind){}
-        Draw.reset();
-    }catch(e){}
-}
-
-// Рисуем FBO pass: захват, отрисовка всех накопленных кругов, блит шейдера.
-function doFboPass(circles){
-    if(circles == null || circles.length === 0) return;
-    try{
-        Draw.flush();
-
-        rangeBuffer.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
-        rangeBuffer.begin(Color.clear);
-
-        // Рисуем все круги в FBO
-        for(var i = 0; i < circles.length; i++){
-            var c = circles[i];
-            setDrawColor(c.color, 0.92);
-            Draw.rect(rangeMaskRegion, c.x, c.y, c.radius * 2, c.radius * 2);
-        }
-        Draw.flush();
-        rangeBuffer.end();
-
-        // Блит FBO на экран через шейдер
-        rangeShader.bind();
-        rangeShader.setUniformi("u_texture", 0);
-        rangeShader.setUniformf("u_time", Time.time);
-        rangeShader.setUniformf("u_offset",
-            Core.camera.position.x - Core.camera.width / 2,
-            Core.camera.position.y - Core.camera.height / 2
-        );
-        rangeShader.setUniformf("u_texsize", Core.camera.width, Core.camera.height);
-        rangeShader.setUniformf("u_invsize", 1 / Core.camera.width, 1 / Core.camera.height);
-        try{ rangeShader.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ rangeShader.setUniformf("u_dp", 1); }
-        rangeShader.setUniformf("u_alpha", 1.0);
-        rangeBuffer.blit(rangeShader);
-
-        // Полный сброс GL после блита
-        fullGlReset();
-    }catch(e){
-        try{ Log.err("Mod Engine FBO pass error", e); }catch(eLog){}
-        try{ if(rangeBuffer != null) rangeBuffer.end(); }catch(eEnd){}
-        rangeUseFbo = false;
-        fullGlReset();
+        var white = Core.atlas.white();
+        if(white != null && white.texture != null) white.texture.bind(0);
+    }catch(eWhite){
+        try{ Core.atlas.find("white").texture.bind(0); }catch(eWhiteFallback){}
     }
+    try{
+        var normal = Draw.getShader();
+        if(normal != null){ normal.bind(); normal.apply(); }
+    }catch(eShader){}
 }
 
-// Собираем круги в массив — рисуем ВСЁ в одном FBO pass, без Draw.drawRange()
-var rangeCircleQueue = [];
+function disableFboAfterFailure(error){
+    try{
+        if(rangeCaptureStarted && rangeBuffer != null) rangeBuffer.end();
+    }catch(eEnd){}
+    rangeCaptureStarted = false;
+    rangeUseFbo = false;
+    restoreGlState();
+    try{ Log.err("Mod Engine range FBO disabled after render failure", error); }catch(eLog){}
+}
 
 function beginRanges(){
     if(rangeBatch) return;
     rangeBatch = true;
     rangePreviousZ = Draw.z();
-    rangeCircleQueue = [];
-    ensureRangeResources();
+    if(ensureRangeResources()){
+        try{
+            Draw.drawRange(rangeLayer, 0.5, function(){
+                // begin runnable — runs mid sorted flush. GL ONLY, no Draw.flush()!
+                try{
+                    rangeBuffer.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
+                    rangeBuffer.begin(Color.clear);
+                    rangeCaptureStarted = true;
+                }catch(eBegin){
+                    disableFboAfterFailure(eBegin);
+                }
+            }, function(){
+                // end runnable — runs mid sorted flush. GL ONLY, no Draw.flush()!
+                if(!rangeCaptureStarted || !rangeUseFbo) return;
+                try{
+                    rangeBuffer.end();
+                    rangeCaptureStarted = false;
+
+                    rangeShader.bind();
+                    rangeShader.setUniformi("u_texture", 0);
+                    rangeShader.setUniformf("u_time", Time.time);
+                    rangeShader.setUniformf("u_offset",
+                        Core.camera.position.x - Core.camera.width / 2,
+                        Core.camera.position.y - Core.camera.height / 2
+                    );
+                    rangeShader.setUniformf("u_texsize", Core.camera.width, Core.camera.height);
+                    rangeShader.setUniformf("u_invsize", 1 / Core.camera.width, 1 / Core.camera.height);
+                    try{ rangeShader.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ rangeShader.setUniformf("u_dp", 1); }
+                    rangeShader.setUniformf("u_alpha", 1.0);
+                    // FrameBuffer.blit = Draw.blit: binds texture unit 0, binds shader,
+                    // renders the ScreenQuad directly. Does not use the sprite batch.
+                    rangeBuffer.blit(rangeShader);
+                    // Undo the blit's GL leftovers without disturbing the batch queue.
+                    restoreGlState();
+                }catch(eBlit){
+                    disableFboAfterFailure(eBlit);
+                }
+            });
+        }catch(eRange){
+            disableFboAfterFailure(eRange);
+        }
+    }
+    Draw.z(rangeLayer);
 }
 
 function endRanges(){
     if(!rangeBatch) return;
-    rangeBatch = false;
-
-    if(rangeUseFbo && rangeCircleQueue.length > 0){
-        doFboPass(rangeCircleQueue);
-    }else if(rangeCircleQueue.length > 0){
-        // Fallback: рисуем круги напрямую
-        for(var i = 0; i < rangeCircleQueue.length; i++){
-            var c = rangeCircleQueue[i];
-            var a = c.alpha || 0.35;
-            setDrawColor(c.color, Math.min(0.075, a * 0.18));
-            Fill.circle(c.x, c.y, c.radius);
-            setDrawColor(c.color, 0.78);
-            Drawf.dashCircle(c.x, c.y, c.radius, c.color);
-            Draw.reset();
-        }
-    }
-
-    rangeCircleQueue = [];
-    fullGlReset();
+    Draw.reset();
     Draw.z(rangePreviousZ);
-}
-
-function rangeCircle(x, y, radius, color, alpha, phase){
-    if(radius <= 0) return;
-    if(rangeBatch && rangeUseFbo){
-        rangeCircleQueue.push({
-            x: x, y: y, radius: radius,
-            color: color,
-            alpha: alpha == null ? 0.35 : alpha,
-            phase: phase || 0
-        });
-    }else{
-        // Без FBO — рисуем напрямую
-        var a = alpha == null ? 0.35 : alpha;
-        setDrawColor(color, Math.min(0.075, a * 0.18));
-        Fill.circle(x, y, radius);
-        setDrawColor(color, 0.78);
-        Drawf.dashCircle(x, y, radius, color);
-        Draw.reset();
-    }
+    rangeBatch = false;
 }
 
 function withOverlay(drawer){
     var previous = Draw.z();
-    // Полный сброс GL перед рисованием — критично для selectionRect после FBO pass
-    fullGlReset();
     Draw.z(Layer.overlayUI);
     try{ drawer(); }finally{
         Draw.reset();
         Draw.z(previous);
     }
+}
+
+function rangeCircle(x, y, radius, color, alpha, phase){
+    if(radius <= 0) return;
+    function drawRange(){
+        var a = alpha == null ? 0.35 : alpha;
+        Draw.z(rangeLayer);
+
+        if(rangeUseFbo && rangeShader != null && rangeBuffer != null && rangeMaskRegion != null){
+            setDrawColor(color, 0.92);
+            Draw.rect(rangeMaskRegion, x, y, radius * 2, radius * 2);
+        }else{
+            setDrawColor(color, Math.min(0.075, a * 0.18));
+            Fill.circle(x, y, radius);
+            setDrawColor(color, 0.78);
+            Drawf.dashCircle(x, y, radius, color);
+        }
+        Draw.reset();
+    }
+    if(rangeBatch) drawRange();
+    else withOverlay(drawRange);
 }
 
 function targetMarker(x, y, primary, secondary){
@@ -232,30 +239,37 @@ function targetMarker(x, y, primary, secondary){
     });
 }
 
+// Drag-selection overlay (world coords). Runtime calls this every frame while
+// state.buildSelectionActive && state.buildSelectionDragging.
 function selectionRect(x1, y1, x2, y2, color){
     withOverlay(function(){
-        var minX = Math.min(x1, x2), minY = Math.min(y1, y2);
-        var width = Math.abs(x2 - x1), height = Math.abs(y2 - y1);
+        var rx = Math.min(x1, x2);
+        var ry = Math.min(y1, y2);
+        var w = Math.abs(x2 - x1);
+        var h = Math.abs(y2 - y1);
         setDrawColor(color, 0.055);
-        Fill.rect(minX + width / 2, minY + height / 2, width, height);
+        Fill.rect(rx + w / 2, ry + h / 2, w, h);
         setDrawColor(color, 0.9);
         Lines.stroke(1.5);
-        Drawf.dashRect(color, minX, minY, width, height);
+        Drawf.dashRect(color, rx, ry, w, h);
         Draw.reset();
     });
 }
 
-function selectedBuild(build, color){
-    if(build == null) return;
+// Per-tile marker for structures already in the selection set.
+function selectedBuild(tile, color){
+    if(tile == null) return;
     withOverlay(function(){
-        Drawf.selected(build, color);
+        Drawf.selected(tile, color);
         Draw.reset();
     });
 }
 
 module.exports = {
+    setDrawColor: setDrawColor,
     beginRanges: beginRanges,
     endRanges: endRanges,
+    withOverlay: withOverlay,
     rangeCircle: rangeCircle,
     targetMarker: targetMarker,
     selectionRect: selectionRect,
