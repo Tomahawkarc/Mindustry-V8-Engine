@@ -98,7 +98,6 @@ function createNexusSlider(min, max, step, startValue, onChange, options){
 
     slider.addListener(extend(InputListener, {
         touchDown: function(event, x, y, pointer, button){
-            // Prevent the parent ScrollPane from stealing the drag gesture.
             try{ event.stop(); }catch(eStop){}
             state.dragging = true;
             applyFromX(x);
