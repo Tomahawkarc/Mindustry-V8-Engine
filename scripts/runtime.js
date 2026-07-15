@@ -59,6 +59,7 @@ var TapEvent = Packages.mindustry.game.EventType.TapEvent;
 var UserWorkbench = require("user-workbench");
 var ModEngineRender = require("render");
 var NexusSlider = require("UI/slider");
+var HudPositioning = require("UI/hud-positioning");
 
 function scriptsApi(){
     try{ return Vars.mods == null ? null : Vars.mods.getScripts(); }catch(e){ return null; }
@@ -489,11 +490,8 @@ var ModEngineRuntime = (function(){
     var buildSelectionArmMillis = 0;
     var buildSelectionInputLayer = null;
     var selectedBuilds = [];
-    var externalHudProbeTimer = 0;
-    var externalHudBottom = null;
     var hudVisibilityCacheTime = -9999;
     var hudVisibilityCache = false;
-    var hudProbePoint = new Vec2();
     var unitRangeCache = {};
     var hotkeyIgnoreUntil = 0;
     var hotkeyBinds = {};
@@ -797,139 +795,11 @@ var ModEngineRuntime = (function(){
         return button;
     }
 
-    function belongsToModEngineHud(element){
-        var current = element;
-        while(current != null){
-            try{
-                var name = current.name == null ? "" : String(current.name);
-                if(name.indexOf("mod-engine") === 0) return true;
-                current = current.parent;
-            }catch(e){
-                return false;
-            }
-        }
-        return false;
-    }
+    // HUD positioning теперь делегируется в HudPositioning (UI/hud-positioning.js).
+    // Оставлены только тонкие обёртки для обратной совместимости.
 
-    function effectivelyVisible(element){
-        var current = element;
-        while(current != null){
-            try{ if(!current.visible) return false; }catch(eVisible){}
-            try{ current = current.parent; }catch(eParent){ return false; }
-        }
-        return true;
-    }
-
-    // Оптимизация: кэш visibility для элементов HUD между probe-вызовами.
-    // collectHudObstacles рекурсивно обходит всех детей hudGroup, что может
-    // вызывать микро-фризы на сценах с множеством элементов. Добавляем
-    // ранний выход для неподходящих элементов + ограничение глубины.
-    var collectHudMaxChildren = 200; // лимит детей для обхода (предотвращение фризов на больших сценах)
-    var collectHudMaxDepth = 10;     // максимальная глубина рекурсии
-    function collectHudObstacles(element, anchor, x, width, out, depth){
-        if(element == null || belongsToModEngineHud(element)) return;
-        depth = depth || 0;
-        if(depth > collectHudMaxDepth) return;
-
-        var skipCandidate = false;
-        try{
-            if(element === anchor || element.isDescendantOf(anchor)) return;
-            if(anchor.isDescendantOf(element)) skipCandidate = true;
-        }catch(eRelation){}
-
-        try{
-            var ew = element.getWidth(), eh = element.getHeight();
-            // Быстрый отсев: слишком маленькие или слишком большие элементы
-            if(ew < 70 || eh < 18) return;
-            if(skipCandidate) return;
-            var stageW = Core.scene.getWidth(), stageH = Core.scene.getHeight();
-            if(ew >= stageW * 0.72 || eh >= stageH * 0.45) return;
-
-            if(effectivelyVisible(element)){
-                hudProbePoint.set(0, 0);
-                element.localToStageCoordinates(hudProbePoint);
-                if(Math.abs(hudProbePoint.x - x) > ew + width + 100) return; // слишком далеко по X
-                var overlap = Math.min(x + width, hudProbePoint.x + ew) - Math.max(x, hudProbePoint.x);
-                if(overlap >= 28){
-                    out.push(hudProbePoint.y);
-                    out.push(hudProbePoint.y + eh);
-                }
-            }
-        }catch(eBounds){}
-
-        try{
-            if(element instanceof Group && depth < collectHudMaxDepth){
-                var children = element.getChildren();
-                var limit = Math.min(children.size, collectHudMaxChildren);
-                for(var i = 0; i < limit; i++){
-                    collectHudObstacles(children.items[i], anchor, x, width, out, depth + 1);
-                }
-            }
-        }catch(eChildren){}
-    }
-
-    // hudStackBottom obstacle collection — используем переиспользуемый массив
-    // вместо new [] каждый раз, чтобы уменьшить GC-нагрузку.
-    var hudObstacleBuffer = null;
-
-    // hudStackBottom — находит Y-позицию для размещения нашего HUD ниже всех
-    // остальных элементов в той же горизонтальной области.
-    // anchor        — элемент, ниже которого мы размещаемся (statustable и т.п.)
-    // anchorBottom  — Y-координата низа anchor в stage-координатах
-    // x, width      — горизонтальная область нашего HUD
-    // holderHeight  — высота нашего HUD (для точного определения перекрытий)
     function hudStackBottom(anchor, anchorBottom, x, width, holderHeight){
-        if(anchor == null || Vars.ui == null || Vars.ui.hudGroup == null) return anchorBottom;
-        if(hudObstacleBuffer == null) hudObstacleBuffer = [];
-        hudObstacleBuffer.length = 0;
-        collectHudObstacles(Vars.ui.hudGroup, anchor, x, width, hudObstacleBuffer);
-        var obstacles = hudObstacleBuffer;
-        var boundary = anchorBottom;
-        var gap = 4; // px зазор между элементами
-
-        // Pass 1: Следуем по непрерывной вертикальной цепочке под нативным HUD.
-        // Это быстро находит элементы, прикреплённые непосредственно к anchor
-        // или друг к другу (допуск ±12 px).
-        for(var pass = 0; pass < 12; pass++){
-            var next = boundary;
-            for(var i = 0; i < obstacles.length; i += 2){
-                var bottom = obstacles[i], top = obstacles[i + 1];
-                if(bottom < boundary - 0.5 && top >= boundary - 12 && top <= boundary + 12){
-                    next = Math.min(next, bottom);
-                }
-            }
-            if(next >= boundary - 0.5) break;
-            boundary = next;
-        }
-
-        // Pass 2: Разрешение коллизий со standalone-элементами из других модов.
-        // После Pass 1 boundary = нижняя граница цепочки. Но сторонний мод мог
-        // разместить HUD-элемент с зазором или независимо — такой элемент
-        // не попал в цепочку, однако перекрывается с нашим HUD.
-        // Проверяем: если rectangle нашего HUD (от boundary−height до boundary)
-        // пересекается с obstacle, сдвигаемся ниже obstacle. Итерируем до
-        // стабильности (максимум 8 проходов — защита от бесконечного цикла).
-        if(holderHeight > 10 && obstacles.length > 0){
-            for(var iter = 0; iter < 8; iter++){
-                var pushed = false;
-                var hudTop = boundary;
-                var hudBottom = boundary - holderHeight;
-                for(var i = 0; i < obstacles.length; i += 2){
-                    var obsBottom = obstacles[i], obsTop = obstacles[i + 1];
-                    // Вертикальное перекрытие: верх препятствия > низ нашего HUD
-                    // и низ препятствия < верх нашего HUD (с учётом зазора).
-                    // В Y-up координатах: obsTop > hudBottom + gap && obsBottom < hudTop - gap
-                    if(obsTop > hudBottom + gap && obsBottom < hudTop - gap){
-                        boundary = obsBottom - gap;
-                        pushed = true;
-                        break; // пересчитаем hudTop/hudBottom с новой boundary
-                    }
-                }
-                if(!pushed) break;
-            }
-        }
-
-        return boundary;
+        return HudPositioning.hudStackBottom(anchor, anchorBottom, x, width, holderHeight);
     }
 
     function attachHudButton(anchor, size){
@@ -950,9 +820,10 @@ var ModEngineRuntime = (function(){
         extension.pack();
         hudRoot.addChild(extension);
 
-        var position = new Vec2();
         var menuHudTick = 0;
         var menuHudShown = null;
+        var positionCtrl = HudPositioning.createController();
+        // Используем HudPositioning для размещения ПОД другими HUD
         hudRoot.update(run(function(){
             try{
                 var shown = modHudVisible() && anchor != null && anchor.hasParent();
@@ -960,21 +831,18 @@ var ModEngineRuntime = (function(){
                 if(shown !== menuHudShown){
                     menuHudShown = shown;
                     extension.visible = shown;
-                    // При появлении сразу позиционируемся без ожидания 10 кадров
                     if(shown && anchor != null){
-                        position.set(0, 0);
-                        anchor.localToStageCoordinates(position);
-                        extension.setPosition(position.x + anchor.getWidth(), position.y + anchor.getHeight() - extension.getHeight());
+                        positionCtrl.forceNext();
                     }
                 }
                 if(!shown) return;
-                // Позиционирование раз в 30 кадров (~0.5 сек) вместо 10 (~0.16 сек)
+
                 menuHudTick++;
                 if(menuHudTick < 30) return;
                 menuHudTick = 0;
-                position.set(0, 0);
-                anchor.localToStageCoordinates(position);
-                extension.setPosition(position.x + anchor.getWidth(), position.y + anchor.getHeight() - extension.getHeight());
+
+                // Размещаем кнопку ПОД другими HUD элементами через HudPositioning
+                HudPositioning.positionUnderOthers(extension, anchor);
             }catch(ePosition){}
         }));
         Vars.ui.hudGroup.addChild(hudRoot);
@@ -1088,10 +956,9 @@ var ModEngineRuntime = (function(){
         holder.add(quickHudButton).size(155, 48).tooltip("Select structures: " + String(ui.state.buildSelectionFilter || "all"));
         holder.pack();
         quickHudRoot.addChild(holder);
-        var pos = new Vec2();
-        var quickHudTick = 0;
         var quickHudShown = null;
         var quickHudPosTimer = 0;
+        var positionCtrl = HudPositioning.createController();
         quickHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
@@ -1099,23 +966,21 @@ var ModEngineRuntime = (function(){
                 if(enabled !== quickHudShown){
                     quickHudShown = enabled;
                     holder.visible = enabled;
-                    // При переключении позиционируемся сразу
-                    if(enabled) quickHudPosTimer = 999; // форсируем reposition
+                    if(enabled){
+                        positionCtrl.forceNext();
+                        quickHudPosTimer = 999; // форсируем reposition
+                    }
                 }
                 if(!enabled) return;
-                // Позиционирование раз в 30 кадров (~0.5 сек) вместо каждых 10
+
                 quickHudPosTimer++;
                 if(quickHudPosTimer < 30) return;
                 quickHudPosTimer = 0;
+
                 if(quickHudAnchor == null || !quickHudAnchor.hasParent()) quickHudAnchor = findCommandHudButton(Vars.ui.hudGroup);
                 if(quickHudAnchor != null){
-                    pos.set(0, 0);
-                    quickHudAnchor.localToStageCoordinates(pos);
-                    var targetX = pos.x + quickHudAnchor.getWidth();
-                    var stageWidth = 0;
-                    try{ stageWidth = Core.scene.getWidth(); }catch(eStage){ stageWidth = Core.graphics.getWidth(); }
-                    var maxX = Math.max(0, stageWidth - holder.getWidth() - Core.scene.marginRight);
-                    holder.setPosition(Math.min(targetX, maxX), pos.y);
+                    // Используем HudPositioning для размещения ПОД другими HUD
+                    HudPositioning.positionUnderOthers(holder, quickHudAnchor);
                     holder.visible = enabled && quickHudAnchor.visible;
                 }else{
                     holder.setPosition(163 + Core.scene.marginLeft, 8 + Core.scene.marginBottom);
@@ -1130,12 +995,11 @@ var ModEngineRuntime = (function(){
         try{ if(speedHudRoot != null) speedHudRoot.remove(); }catch(eRemove){}
         speedHudRoot = null;
         speedHudAnchor = null;
-        externalHudProbeTimer = 0;
-        externalHudBottom = null;
     }
 
     function rebuildQuickAccessHud(){
         removeSpeedHud();
+        HudPositioning.resetCache();
         ensureSpeedHud();
     }
 
@@ -1151,8 +1015,6 @@ var ModEngineRuntime = (function(){
         speedHudRoot.name = "mod-engine-speed-root";
         speedHudRoot.setFillParent(true);
         speedHudRoot.touchable = Touchable.childrenOnly;
-        // Отключаем обновление по умолчанию — будем вешать свой обработчик
-        // только на reposition, а не на каждое обновление сцены
         speedHudRoot.visible = true;
         var holder = new Table();
         holder.name = "mod-engine-speed-stack";
@@ -1202,39 +1064,27 @@ var ModEngineRuntime = (function(){
         holder.pack();
         speedHudRoot.addChild(holder);
 
-        // === ОПТИМИЗАЦИЯ МИКРО-ФРИЗОВ ===
-        // Проблема: update-коллбэк на Table вызывается каждый кадр (60fps).
-        // Даже с дросселированием, это добавляет накладные расходы на GC
-        // (создание замыканий, Vec2, String каждые N кадров).
-        // Решение: используем reposition-коллбэк (вызывается при смене размера)
-        // + ручной вызов через Core.app.post при переключении видимости.
-        // Микро-позиционирование (проверка anchor) делаем только при resize
-        // или раз в 2 секунды, probe hudStackBottom — раз в 10 секунд.
-
+        // v2: Используем HudPositioning для правильного размещения ПОД другими HUD
         var speedHudShown = false;
         var speedHudResizeTimer = 0;
         var speedHudAnchorTimer = 0;
         var speedHudProbeTimer = 0;
-        // Используем переиспользуемый Vec2 вместо new Vec2() каждый раз
         var speedHudPoint = new Vec2();
         var speedHudBottom = null;
-
-        // Первый reposition через 2 секунды после создания (ждём стабилизации HUD)
         var firstRepositionPending = true;
+        var positionCtrl = HudPositioning.createController();
 
         function repositionSpeedHud(){
             if(holder == null || !holder.visible) return;
-
             try{
                 if(speedHudAnchor == null || !speedHudAnchor.hasParent()){
-                    speedHudAnchor = Vars.ui.hudGroup.find("statustable");
+                    speedHudAnchor = HudPositioning.findBestAnchor() || Vars.ui.hudGroup.find("statustable");
                 }
-
                 if(speedHudAnchor != null){
                     speedHudPoint.set(0, 0);
                     speedHudAnchor.localToStageCoordinates(speedHudPoint);
-                    if(speedHudBottom == null){
-                        speedHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight());
+                    if(speedHudBottom == null || speedHudProbeTimer >= 600){
+                        speedHudBottom = HudPositioning.hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight());
                     }
                     holder.setPosition(speedHudPoint.x, speedHudBottom - holder.getHeight());
                 }else{
@@ -1252,41 +1102,33 @@ var ModEngineRuntime = (function(){
                     speedHudShown = enabled;
                     holder.visible = enabled;
                     if(enabled){
-                        // При появлении — сразу обновить позицию (один раз через post,
-                        // чтобы не ломать текущий фрейм)
+                        positionCtrl.forceNext();
                         Core.app.post(run(function(){ repositionSpeedHud(); }));
                     }
                 }
                 if(!enabled) return;
 
-                // reposition ставим в очередь каждый 120 кадров (~2 сек при 60fps)
                 speedHudResizeTimer++;
                 if(speedHudResizeTimer < 120 && !firstRepositionPending) return;
                 speedHudResizeTimer = 0;
                 firstRepositionPending = false;
 
-                // Перепроверяем anchor раз в 5 reposition-циклов (~10 сек)
                 speedHudAnchorTimer++;
                 if(speedHudAnchorTimer >= 5){
                     speedHudAnchorTimer = 0;
                     if(speedHudAnchor == null || !speedHudAnchor.hasParent()){
-                        speedHudAnchor = Vars.ui.hudGroup.find("statustable");
-                        speedHudBottom = null; // сброс, т.к. anchor изменился
+                        speedHudAnchor = HudPositioning.findBestAnchor() || Vars.ui.hudGroup.find("statustable");
+                        speedHudBottom = null;
                     }
                 }
 
-                repositionSpeedHud();
-
-                // hudStackBottom probe — раз в 600 кадров (~10 секунд)
                 speedHudProbeTimer += 120;
                 if(speedHudProbeTimer >= 600){
                     speedHudProbeTimer = 0;
-                    if(speedHudAnchor != null){
-                        speedHudPoint.set(0, 0);
-                        speedHudAnchor.localToStageCoordinates(speedHudPoint);
-                        speedHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight());
-                    }
+                    speedHudBottom = null; // форсируем пересчёт
                 }
+
+                repositionSpeedHud();
             }catch(e){}
         }));
         Vars.ui.hudGroup.addChild(speedHudRoot);
@@ -3148,6 +2990,7 @@ var ModEngineRuntime = (function(){
             buildSelectionInputLayer = null;
             removeQuickHud();
             removeSpeedHud();
+            HudPositioning.resetCache();
             Core.app.post(run(function(){
                 ensureHudButton();
                 ensureQuickSelectionButton();
