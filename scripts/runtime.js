@@ -871,15 +871,25 @@ var ModEngineRuntime = (function(){
     // hudStackBottom obstacle collection — используем переиспользуемый массив
     // вместо new [] каждый раз, чтобы уменьшить GC-нагрузку.
     var hudObstacleBuffer = null;
-    function hudStackBottom(anchor, anchorBottom, x, width){
+
+    // hudStackBottom — находит Y-позицию для размещения нашего HUD ниже всех
+    // остальных элементов в той же горизонтальной области.
+    // anchor        — элемент, ниже которого мы размещаемся (statustable и т.п.)
+    // anchorBottom  — Y-координата низа anchor в stage-координатах
+    // x, width      — горизонтальная область нашего HUD
+    // holderHeight  — высота нашего HUD (для точного определения перекрытий)
+    function hudStackBottom(anchor, anchorBottom, x, width, holderHeight){
         if(anchor == null || Vars.ui == null || Vars.ui.hudGroup == null) return anchorBottom;
         if(hudObstacleBuffer == null) hudObstacleBuffer = [];
         hudObstacleBuffer.length = 0;
         collectHudObstacles(Vars.ui.hudGroup, anchor, x, width, hudObstacleBuffer);
         var obstacles = hudObstacleBuffer;
         var boundary = anchorBottom;
+        var gap = 4; // px зазор между элементами
 
-        // Follow only panels that form a contiguous vertical chain under the native HUD.
+        // Pass 1: Следуем по непрерывной вертикальной цепочке под нативным HUD.
+        // Это быстро находит элементы, прикреплённые непосредственно к anchor
+        // или друг к другу (допуск ±12 px).
         for(var pass = 0; pass < 12; pass++){
             var next = boundary;
             for(var i = 0; i < obstacles.length; i += 2){
@@ -891,6 +901,34 @@ var ModEngineRuntime = (function(){
             if(next >= boundary - 0.5) break;
             boundary = next;
         }
+
+        // Pass 2: Разрешение коллизий со standalone-элементами из других модов.
+        // После Pass 1 boundary = нижняя граница цепочки. Но сторонний мод мог
+        // разместить HUD-элемент с зазором или независимо — такой элемент
+        // не попал в цепочку, однако перекрывается с нашим HUD.
+        // Проверяем: если rectangle нашего HUD (от boundary−height до boundary)
+        // пересекается с obstacle, сдвигаемся ниже obstacle. Итерируем до
+        // стабильности (максимум 8 проходов — защита от бесконечного цикла).
+        if(holderHeight > 10 && obstacles.length > 0){
+            for(var iter = 0; iter < 8; iter++){
+                var pushed = false;
+                var hudTop = boundary;
+                var hudBottom = boundary - holderHeight;
+                for(var i = 0; i < obstacles.length; i += 2){
+                    var obsBottom = obstacles[i], obsTop = obstacles[i + 1];
+                    // Вертикальное перекрытие: верх препятствия > низ нашего HUD
+                    // и низ препятствия < верх нашего HUD (с учётом зазора).
+                    // В Y-up координатах: obsTop > hudBottom + gap && obsBottom < hudTop - gap
+                    if(obsTop > hudBottom + gap && obsBottom < hudTop - gap){
+                        boundary = obsBottom - gap;
+                        pushed = true;
+                        break; // пересчитаем hudTop/hudBottom с новой boundary
+                    }
+                }
+                if(!pushed) break;
+            }
+        }
+
         return boundary;
     }
 
@@ -1196,7 +1234,7 @@ var ModEngineRuntime = (function(){
                     speedHudPoint.set(0, 0);
                     speedHudAnchor.localToStageCoordinates(speedHudPoint);
                     if(speedHudBottom == null){
-                        speedHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth());
+                        speedHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight());
                     }
                     holder.setPosition(speedHudPoint.x, speedHudBottom - holder.getHeight());
                 }else{
@@ -1246,7 +1284,7 @@ var ModEngineRuntime = (function(){
                     if(speedHudAnchor != null){
                         speedHudPoint.set(0, 0);
                         speedHudAnchor.localToStageCoordinates(speedHudPoint);
-                        speedHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth());
+                        speedHudBottom = hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight());
                     }
                 }
             }catch(e){}
