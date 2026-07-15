@@ -829,11 +829,9 @@ var ModEngineRuntime = (function(){
         var position = new Vec2();
         var menuHudShown = null;
 
-        // Кнопка меню — ТОЧНО как в самом первом рабочем скрипте, который ты скинул.
-        // Всегда СПРАВА от HUD (flush, без зазора).
+        // Кнопка меню — ВСЕГДА СПРАВА от НАТИВНОГО якоря ("mobile buttons" или "statustable").
+        // НЕ зависит от speed/quick HUD. Всегда flush справа от native anchor.
         // Больше НЕ ТРОГАЕМ ЭТУ ЛОГИКУ.
-        // Если speed/quick включены — справа от speedStackHolder.
-        // Иначе — справа от native anchor.
         hudRoot.update(run(function(){
             try{
                 var shown = modHudVisible() && anchor != null && anchor.hasParent();
@@ -844,26 +842,16 @@ var ModEngineRuntime = (function(){
                 }
                 if(!shown) return;
 
-                // Выбираем цель: если speed/quick HUD активен — справа от него, иначе от native
-                var targetAnchor = anchor;
-                try{
-                    var speedOn = ui != null && ui.state != null &&
-                        (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
-                    if(speedOn && speedStackHolder != null &&
-                       speedStackHolder.visible && speedStackHolder.hasParent()){
-                        targetAnchor = speedStackHolder;
-                    }
-                }catch(e){}
-
+                // Всегда используем переданный native anchor (mobile buttons или statustable)
                 position.set(0, 0);
-                targetAnchor.localToStageCoordinates(position);
+                anchor.localToStageCoordinates(position);
                 extension.pack();
 
                 // Точно как в оригинальном рабочем скрипте:
                 // x = anchorX + width, y = anchorY + height - buttonHeight  (справа, flush)
                 extension.setPosition(
-                    position.x + targetAnchor.getWidth(),
-                    position.y + targetAnchor.getHeight() - extension.getHeight()
+                    position.x + anchor.getWidth(),
+                    position.y + anchor.getHeight() - extension.getHeight()
                 );
             }catch(ePosition){}
         }));
