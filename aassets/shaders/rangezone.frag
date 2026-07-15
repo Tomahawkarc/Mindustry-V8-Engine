@@ -1,8 +1,7 @@
 #define HIGHP
 
 // Edge-union style similar to Mindustry shield.frag:
-// solid fills are drawn into effectBuffer, then this shader keeps a soft fill
-// and boosts only the silhouette edge so overlapping radii do not stack.
+// solid fills are drawn into effectBuffer, then this shader keeps a soft fill and boosts only the silhouette edge so overlapping radii do not stack
 
 #define ALPHA 0.18
 #define step 2.0
@@ -39,7 +38,7 @@ void main(){
         texture2D(u_texture, T + vec2(-step, 0.0) * v)
     );
 
-    // Edge detection: current pixel is outside the solid region, neighbour is inside.
+    // edge detection: current pixel is outside the solid region, neighbour is inside
     if(color.a < 0.9 && maxed.a > 0.9){
         gl_FragColor = vec4(maxed.rgb, maxed.a * 100.0 * u_alpha);
     }else{
