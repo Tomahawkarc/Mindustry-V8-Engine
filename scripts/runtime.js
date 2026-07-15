@@ -826,15 +826,14 @@ var ModEngineRuntime = (function(){
         extension.pack();
         hudRoot.addChild(extension);
 
-        var menuHudTick = 0;
+        var position = new Vec2();
         var menuHudShown = null;
-        var positionCtrl = HudPositioning.createController();
-        var mainPosPoint = new Vec2();  // reusable для расчёта позиции справа
 
-        // Кнопка меню ВСЕГДА СПРАВА от HUD (как было в самом первом рабочем варианте).
-        // Приоритет: если speed/quick HUD видим — справа от него.
-        // Иначе — справа от нативного anchor ("mobile buttons" / "statustable").
-        // Если в этой области есть HUD другого мода — сдвигаем дальше вправо (вплотную, без зазора).
+        // Кнопка меню — ТОЧНО как в самом первом рабочем скрипте, который ты скинул.
+        // Всегда СПРАВА от HUD (flush, без зазора).
+        // Больше НЕ ТРОГАЕМ ЭТУ ЛОГИКУ.
+        // Если speed/quick включены — справа от speedStackHolder.
+        // Иначе — справа от native anchor.
         hudRoot.update(run(function(){
             try{
                 var shown = modHudVisible() && anchor != null && anchor.hasParent();
@@ -842,17 +841,10 @@ var ModEngineRuntime = (function(){
                 if(shown !== menuHudShown){
                     menuHudShown = shown;
                     extension.visible = shown;
-                    if(shown && anchor != null){
-                        positionCtrl.forceNext();
-                    }
                 }
                 if(!shown) return;
 
-                menuHudTick++;
-                if(menuHudTick < 30) return;
-                menuHudTick = 0;
-
-                // Выбираем опорный HUD: speedStack если активен, иначе native anchor
+                // Выбираем цель: если speed/quick HUD активен — справа от него, иначе от native
                 var targetAnchor = anchor;
                 try{
                     var speedOn = ui != null && ui.state != null &&
@@ -863,53 +855,16 @@ var ModEngineRuntime = (function(){
                     }
                 }catch(e){}
 
-                mainPosPoint.set(0, 0);
-                targetAnchor.localToStageCoordinates(mainPosPoint);
+                position.set(0, 0);
+                targetAnchor.localToStageCoordinates(position);
+                extension.pack();
 
-                var baseX = mainPosPoint.x + targetAnchor.getWidth();  // СПРАВА от HUD, вплотную
-                var y = mainPosPoint.y;
-                var x = baseX;
-
-                // Проверка на HUD другого мода в этой области.
-                // Если есть — сдвигаем меню дальше вправо **вплотную** (без большого зазора).
-                try{
-                    var ew = extension.getWidth() || 65;
-                    var eh = extension.getHeight() || 40;
-                    var children = Vars.ui.hudGroup.getChildren();
-                    var maxRight = baseX;
-
-                    for(var i = 0; i < children.size; i++){
-                        var el = children.items[i];
-                        if(!el || !el.visible || el === extension || el === hudRoot) continue;
-                        var nm = (el.name || "").toString();
-                        if(nm.indexOf("mod-engine") === 0) continue; // свои пропускаем
-
-                        try{
-                            var ep = new Vec2();
-                            ep.set(0, 0);
-                            el.localToStageCoordinates(ep);
-
-                            var elW = el.getWidth() || 0;
-                            var elH = el.getHeight() || 0;
-
-                            // Горизонтальное перекрытие по вертикали (с небольшим допуском)
-                            var vOverlap = (ep.y - 8 <= y + eh) && (ep.y + elH + 8 >= y);
-                            if(vOverlap){
-                                var rightEdge = ep.x + elW;
-                                // Если чужой элемент заканчивается правее нашей текущей позиции — берём его правый край
-                                if(rightEdge > maxRight - 2){
-                                    maxRight = rightEdge;
-                                }
-                            }
-                        }catch(eEl){}
-                    }
-
-                    if(maxRight > x){
-                        x = maxRight;   // вплотную к HUD другого мода
-                    }
-                }catch(eScan){}
-
-                extension.setPosition(x, y);
+                // Точно как в оригинальном рабочем скрипте:
+                // x = anchorX + width, y = anchorY + height - buttonHeight  (справа, flush)
+                extension.setPosition(
+                    position.x + targetAnchor.getWidth(),
+                    position.y + targetAnchor.getHeight() - extension.getHeight()
+                );
             }catch(ePosition){}
         }));
         Vars.ui.hudGroup.addChild(hudRoot);
