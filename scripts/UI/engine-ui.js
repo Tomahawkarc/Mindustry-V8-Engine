@@ -229,7 +229,7 @@ var ModEngineUI = (function(){
         return extend(BaseDrawable, {
             draw: function(x, y, width, height){
                 var opacity = 1;
-                try{ opacity = Math.max(0.55, Math.min(1, state.menuOpacity)); }catch(eOpacity){ opacity = 1; }
+                try{ opacity = Math.max(0, Math.min(1, state.menuOpacity)); }catch(eOpacity){ opacity = 1; }
                 setDrawColor(background, (background == null ? 1 : background.a) * opacity);
                 Fill.rect(x + width / 2, y + height / 2, width, height);
 
@@ -525,7 +525,7 @@ var ModEngineUI = (function(){
             })(names[i], i);
         }
         body.add(grid).growX().padTop(gap.lg).row();
-        body.add(liveSliderBlock("MENU BACKGROUND OPACITY", 0.35, 1, 0.01, state.menuOpacity, function(v){ return Math.round(v * 100) + "%"; }, "35%", "70%", "100%", theme.cyan, function(v){
+        body.add(liveSliderBlock("MENU BACKGROUND OPACITY", 0, 1, 0.01, state.menuOpacity, function(v){ return Math.round(v * 100) + "%"; }, "0%", "50%", "100%", theme.cyan, function(v){
             state.menuOpacity = v;
         })).growX().padTop(gap.lg);
         d.cont.add(body).width(Math.min(760, Math.max(430, ArcCore.graphics.getWidth() - 100)));
