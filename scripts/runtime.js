@@ -798,8 +798,13 @@ var ModEngineRuntime = (function(){
     // HUD positioning теперь делегируется в HudPositioning (UI/hud-positioning.js).
     // Оставлены только тонкие обёртки для обратной совместимости.
 
+    // Thin wrapper — new hud-positioning uses the proven working logic
     function hudStackBottom(anchor, anchorBottom, x, width, holderHeight){
-        return HudPositioning.hudStackBottom(anchor, anchorBottom, x, width, holderHeight);
+        try {
+            return HudPositioning.hudStackBottom(anchor, anchorBottom, x, width, holderHeight);
+        } catch(e) {
+            return anchorBottom || 0;
+        }
     }
 
     function attachHudButton(anchor, size){
@@ -1083,13 +1088,16 @@ var ModEngineRuntime = (function(){
                 if(speedHudAnchor != null){
                     speedHudPoint.set(0, 0);
                     speedHudAnchor.localToStageCoordinates(speedHudPoint);
-                    if(speedHudBottom == null || speedHudProbeTimer >= 600){
-                        speedHudBottom = HudPositioning.hudStackBottom(speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight());
+
+                    // Throttled recompute (same as the working file) — major lag fix
+                    speedHudProbeTimer++;
+                    if(speedHudBottom == null || speedHudProbeTimer >= 13){
+                        speedHudProbeTimer = 0;
+                        speedHudBottom = HudPositioning.hudStackBottom(
+                            speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight()
+                        );
                     }
                     holder.setPosition(speedHudPoint.x, speedHudBottom - holder.getHeight());
-                }else{
-                    holder.setPosition(Core.scene.marginLeft + 8,
-                        Core.scene.getHeight() - Core.scene.marginTop - holder.getHeight() - 84);
                 }
             }catch(e){}
         }
@@ -1109,26 +1117,25 @@ var ModEngineRuntime = (function(){
                 if(!enabled) return;
 
                 speedHudResizeTimer++;
-                if(speedHudResizeTimer < 120 && !firstRepositionPending) return;
+                if(speedHudResizeTimer < 85) return;   // big lag fix
                 speedHudResizeTimer = 0;
-                firstRepositionPending = false;
 
-                speedHudAnchorTimer++;
-                if(speedHudAnchorTimer >= 5){
-                    speedHudAnchorTimer = 0;
-                    if(speedHudAnchor == null || !speedHudAnchor.hasParent()){
-                        speedHudAnchor = HudPositioning.findBestAnchor() || Vars.ui.hudGroup.find("statustable");
-                        speedHudBottom = null;
+                if(speedHudAnchor == null || !speedHudAnchor.hasParent()){
+                    speedHudAnchor = HudPositioning.findBestAnchor() || Vars.ui.hudGroup.find("statustable");
+                }
+                if(speedHudAnchor != null){
+                    speedHudPoint.set(0, 0);
+                    speedHudAnchor.localToStageCoordinates(speedHudPoint);
+
+                    speedHudProbeTimer++;
+                    if(speedHudBottom == null || speedHudProbeTimer >= 13){
+                        speedHudProbeTimer = 0;
+                        speedHudBottom = HudPositioning.hudStackBottom(
+                            speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight()
+                        );
                     }
+                    holder.setPosition(speedHudPoint.x, speedHudBottom - holder.getHeight());
                 }
-
-                speedHudProbeTimer += 120;
-                if(speedHudProbeTimer >= 600){
-                    speedHudProbeTimer = 0;
-                    speedHudBottom = null; // форсируем пересчёт
-                }
-
-                repositionSpeedHud();
             }catch(e){}
         }));
         Vars.ui.hudGroup.addChild(speedHudRoot);
