@@ -3,7 +3,7 @@
   "displayName": "[#ffd28a[]]Mod [#10e5e5[]]Engine[]",
   "author": "[#10e5e5[]]Tomahawk[]",
   "subtitle": "[#10e5e5[]]NexusOS control engine for Mindustry V8[]",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "minGameVersion": "154",
   "hidden": false,
   "description": "[#ffd28a[]]NEXUS_OS // MOD ENGINE[]\n[#aab0b4[]]Rhino/JS control engine for Mindustry V8.[]\n\n[#10e5e5[]]CORE SYSTEMS[]\n[white[]]>[] [#ffd28a[]]World & Waves[]  [#aab0b4[]]simulation, weather and wave control[]\n[white[]]>[] [#ffd28a[]]Items & Units[]  [#aab0b4[]]batch core injection and unit deployment[]\n[white[]]>[] [#ffd28a[]]Weapons[]  [#aab0b4[]]stable unit fire-rate and turret tuning[]\n[white[]]>[] [#ffd28a[]]Mining[]  [#aab0b4[]]multi-ore fleet assignments[]\n[white[]]>[] [#ffd28a[]]Inspector[]  [#aab0b4[]]live deployments and mod-unit filtering[]\n[white[]]>[] [#ffd28a[]]Builds & Radius[]  [#aab0b4[]]factory filling and team-colored overlays[]\n[white[]]>[] [#ffd28a[]]Hotkeys & Console[]  [#aab0b4[]]persistent binds and Rhino shell[]\n\n[#10e5e5[]]QUICK ACCESS[]\n[#aab0b4[]]HUD tools hide on the full map and stack below compatible third-party panels.[]\n\n[#69e89b[]]TIP[] [#aab0b4[]]Set Inspector PAGE SIZE to 20-40 on weaker devices.[]\n[#646b76[]]JS-only mod. No Java classpath required.[]"
