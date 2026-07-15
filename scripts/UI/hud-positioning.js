@@ -142,8 +142,8 @@
     //   hudWidth — ширина нашего HUD
     //   out      — массив, куда добавляем [bottom, top] пары
     //   depth    — текущая глубина рекурсии
-    var COLLECT_MAX_DEPTH = 10;
-    var COLLECT_MAX_CHILDREN = 150;
+    var COLLECT_MAX_DEPTH = 12;
+    var COLLECT_MAX_CHILDREN = 220;
 
     function collectObstacles(element, anchor, hudX, hudWidth, out, depth){
         if(element == null || out.length >= OBSTACLE_BUFFER_MAX * 2) return;
@@ -163,11 +163,13 @@
             var eh = element.getHeight();
 
             // Быстрый отсев: слишком маленькие элементы (пыль, spacer'ы)
-            if(ew < 16 || eh < 10) return;
+            // Специально разрешаем тонкие горизонтальные бары (типичны для HUD других модов — слайдеры, строки статуса)
+            var isThinHorizontalBar = (ew > 20 && eh < 52);   // максимально агрессивная ловля тонких баров (как "Нет цели")
+            if(!isThinHorizontalBar && (ew < 1 || eh < 1)) return;
 
             // Слишком большие (весь экран) — обычно это fillParent-контейнеры
             var stage = getStageSize();
-            if(ew >= stage.w * 0.75 && eh >= stage.h * 0.45) return;
+            if(ew >= stage.w * 0.95 && eh >= stage.h * 0.60) return;
 
             // Проверка видимости (с кэшем)
             if(!isEffectivelyVisible(element)) return;
@@ -181,15 +183,18 @@
             var elemTop = elemY + eh;
 
             // Быстрая отсечка по X: элемент слишком далеко по горизонтали
-            if(elemX + ew < hudX - 40 || elemX > hudX + hudWidth + 40) return;
+            // Очень широкое окно — тонкие горизонтальные бары других модов часто идут на всю ширину экрана
+            if(elemX + ew < hudX - 300 || elemX > hudX + hudWidth + 300) return;
 
             // Проверяем горизонтальное перекрытие с нашим HUD
             var overlapLeft = Math.max(hudX, elemX);
             var overlapRight = Math.min(hudX + hudWidth, elemX + ew);
             var overlap = overlapRight - overlapLeft;
 
-            // Требуем минимум 20px горизонтального перекрытия
-            if(overlap >= 20){
+            // Требуем минимум 3px горизонтального перекрытия (ловим очень тонкие бары других модов)
+            // Для тонких горизонтальных элементов (высота < 55) делаем ещё мягче
+            var minOverlap = (eh < 55) ? 3 : 8;
+            if(overlap >= minOverlap){
                 out.push(elemY);     // bottom
                 out.push(elemTop);   // top
             }
@@ -231,7 +236,7 @@
         collectObstacles(Vars.ui.hudGroup, anchor, hudX, hudWidth, out);
 
         var obstacles = out;
-        var gap = 4; // px зазора
+        var gap = 16; // px зазора (увеличен для надёжного отделения от HUD других модов, особенно тонких слайдеров)
         var boundary = anchorBottom; // начинаем от низа якоря
 
         // ================================================================
@@ -265,24 +270,32 @@
         // Если есть коллизия — сдвигаемся ПОД препятствие.
         // Итерируем до стабильности (макс 8 проходов).
         // ================================================================
-        if(hudHeight > 10 && obstacles.length > 0){
-            for(var iter = 0; iter < 8; iter++){
-                var pushed = false;
-                var ourTop = boundary;               // верх нашего HUD
-                var ourBottom = boundary - hudHeight; // низ нашего HUD
+        if(hudHeight > 6 && obstacles.length > 0){
+            for(var iter = 0; iter < 12; iter++){
+                var ourTop = boundary;
+                var ourBottom = boundary - hudHeight;
+                var lowestBoundary = boundary;
+
                 for(var j = 0; j < obstacles.length; j += 2){
                     var oBottom = obstacles[j];
                     var oTop = obstacles[j + 1];
-                    // Условие: oTop > ourBottom + gap (верх препятствия выше низа нашего HUD)
-                    //        && oBottom < ourTop - gap (низ препятствия ниже верха нашего HUD)
+
                     if(oTop > ourBottom + gap && oBottom < ourTop - gap){
-                        // Сдвигаемся ПОД препятствие
-                        boundary = oBottom - gap;
-                        pushed = true;
-                        break;
+                        var barHeight = oTop - oBottom;
+                        var isThinBar = barHeight < 55;     // тонкий бар (слайдер / строка HUD)
+                        var extraGap = isThinBar ? 12 : 4;  // больший зазор под тонкими барами
+                        var candidate = oBottom - gap - extraGap;
+                        if(candidate < lowestBoundary){
+                            lowestBoundary = candidate;
+                        }
                     }
                 }
-                if(!pushed) break;
+
+                if(lowestBoundary < boundary - 0.5){
+                    boundary = lowestBoundary;
+                } else {
+                    break;
+                }
             }
         }
 
@@ -296,6 +309,34 @@
         if(boundary > stage.h - 4){
             boundary = stage.h - 4;
         }
+
+        // ============================================================
+        // SAFETY NET — финальная проверка
+        // Берём самое низкое препятствие, которое пересекается
+        // по X с нашим HUD, и принудительно ставим ниже него.
+        // Это спасает в случаях, когда цепочка и итеративный push
+        // не поймали независимый HUD другого мода.
+        // ============================================================
+        try{
+            var finalLowest = boundary;
+            var ourProposedBottom = boundary - hudHeight;
+
+            for(var k = 0; k < obstacles.length; k += 2){
+                var ob = obstacles[k];
+                var ot = obstacles[k + 1];
+                var obWidth = 9999; // мы уже отфильтровали по X при сборе
+
+                // Проверяем пересечение по вертикали с нашей будущей областью
+                if(ot > ourProposedBottom - 2 && ob < boundary + 2){
+                    if(ob < finalLowest){
+                        finalLowest = ob - gap;
+                    }
+                }
+            }
+            if(finalLowest < boundary){
+                boundary = finalLowest;
+            }
+        }catch(e){}
 
         return boundary;
     }
@@ -377,12 +418,31 @@
             if(mb != null && mb.hasParent() && isEffectivelyVisible(mb)) return mb;
         }catch(e){}
 
+        // Приоритет 3: кнопка "command" (часто якорь для HUD других модов — как на скриншоте)
+        try{
+            var cmd = Vars.ui.hudGroup.find("command");
+            if(cmd != null && cmd.hasParent() && isEffectivelyVisible(cmd)) return cmd;
+        }catch(e){}
+
+        // Fallback: любой видимый нижний элемент (кнопки/панели)
+        try{
+            var ch = Vars.ui.hudGroup.getChildren();
+            for(var ci = 0; ci < ch.size; ci++){
+                var c = ch.items[ci];
+                if(!c || !c.hasParent() || !isEffectivelyVisible(c)) continue;
+                var nm = c.name ? String(c.name).toLowerCase() : "";
+                if(nm.indexOf("button") >= 0 || nm.indexOf("hud") >= 0 || nm.indexOf("command") >= 0){
+                    return c;
+                }
+            }
+        }catch(e){}
+
         return null;
     }
 
     var HudPositioning = {
         // Версия для проверки совместимости
-        VERSION: "2.0.0",
+        VERSION: "2.1.0", // 2026-07-15: improved thin horizontal bar detection + better multi-obstacle push + larger gaps + "command" anchor fallback (fixes overlap with other mods' HUD bars)
 
         // Основная функция позиционирования
         // Возвращает {x, y} — позицию для setPosition(x, y) элемента
