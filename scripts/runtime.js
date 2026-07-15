@@ -476,6 +476,9 @@ var ModEngineRuntime = (function(){
     var quickHudAnchor = null;
     var speedHudRoot = null;
     var speedHudAnchor = null;
+    var speedStackHolder = null;
+    var mainPositionCtrl = null;
+    var mainHudExtension = null;
     var originalsCaptured = false;
     var turretDefaults = [];
     var weaponDefaults = [];
@@ -825,9 +828,12 @@ var ModEngineRuntime = (function(){
         extension.pack();
         hudRoot.addChild(extension);
 
+        mainHudExtension = extension;
         var menuHudTick = 0;
         var menuHudShown = null;
         var positionCtrl = HudPositioning.createController();
+        mainPositionCtrl = positionCtrl;
+        var mainPosPoint = new Vec2();  // reusable for direct speed-stack positioning
         // Используем HudPositioning для размещения ПОД другими HUD
         hudRoot.update(run(function(){
             try{
@@ -846,8 +852,33 @@ var ModEngineRuntime = (function(){
                 if(menuHudTick < 30) return;
                 menuHudTick = 0;
 
-                // Размещаем кнопку ПОД другими HUD элементами через HudPositioning
-                HudPositioning.positionUnderOthers(extension, anchor);
+                // Динамический якорь: если speed/quick HUD активен и holder видим — позиционируем под него,
+                // иначе под native anchor (как раньше)
+                var targetAnchor = anchor;
+                var useSpeedStack = false;
+                try{
+                    var speedEnabled = ui != null && ui.state != null &&
+                        (ui.state.worldSpeedQuickAccess || ui.state.quickItemsQuickAccess);
+                    if(speedEnabled && speedStackHolder != null &&
+                       speedStackHolder.visible && speedStackHolder.hasParent()){
+                        targetAnchor = speedStackHolder;
+                        useSpeedStack = true;
+                    }
+                }catch(eAnchor){}
+                if(useSpeedStack && speedStackHolder != null){
+                    // Прямое размещение ПОД speed/quick holder (его нижняя граница).
+                    // Не используем positionUnderOthers, т.к. тот пропускает mod-engine элементы (в т.ч. holder)
+                    // и дал бы неправильную позицию. Прямой расчёт даёт "gear под нашим HUD".
+                    try{
+                        mainPosPoint.set(0, 0);
+                        speedStackHolder.localToStageCoordinates(mainPosPoint);
+                        var holderBottom = mainPosPoint.y + speedStackHolder.getHeight();
+                        extension.setPosition(mainPosPoint.x, holderBottom);
+                    }catch(eDirect){}
+                }else{
+                    // Размещаем кнопку ПОД другими HUD элементами через HudPositioning (native anchor)
+                    HudPositioning.positionUnderOthers(extension, targetAnchor);
+                }
             }catch(ePosition){}
         }));
         Vars.ui.hudGroup.addChild(hudRoot);
@@ -1000,12 +1031,23 @@ var ModEngineRuntime = (function(){
         try{ if(speedHudRoot != null) speedHudRoot.remove(); }catch(eRemove){}
         speedHudRoot = null;
         speedHudAnchor = null;
+        speedStackHolder = null;
+        // Force main gear button back to native anchor when speed/quick HUD removed
+        try{
+            if(mainPositionCtrl) mainPositionCtrl.forceNext();
+        }catch(e){}
     }
 
     function rebuildQuickAccessHud(){
         removeSpeedHud();
         HudPositioning.resetCache();
         ensureSpeedHud();
+        // Force reposition main menu button when quick HUD toggles (dynamic anchor change)
+        try{
+            if(mainPositionCtrl) mainPositionCtrl.forceNext();
+            if(mainHudExtension) mainHudExtension.visible = modHudVisible();
+        }catch(eForce){}
+        HudPositioning.forceRefresh();
     }
 
     function ensureSpeedHud(){
@@ -1068,6 +1110,7 @@ var ModEngineRuntime = (function(){
         }
         holder.pack();
         speedHudRoot.addChild(holder);
+        speedStackHolder = holder;  // capture для динамического якоря главной кнопки
 
         // v2: Используем HudPositioning для правильного размещения ПОД другими HUD
         var speedHudShown = false;
@@ -1113,6 +1156,10 @@ var ModEngineRuntime = (function(){
                         positionCtrl.forceNext();
                         Core.app.post(run(function(){ repositionSpeedHud(); }));
                     }
+                    // Force main gear button reposition on speed/quick HUD show/hide (dynamic anchor)
+                    try{
+                        if(mainPositionCtrl) mainPositionCtrl.forceNext();
+                    }catch(e){ }
                 }
                 if(!enabled) return;
 
