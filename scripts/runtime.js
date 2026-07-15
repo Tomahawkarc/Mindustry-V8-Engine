@@ -2991,6 +2991,7 @@ var ModEngineRuntime = (function(){
             removeQuickHud();
             removeSpeedHud();
             HudPositioning.resetCache();
+            HudPositioning.forceRefresh();
             Core.app.post(run(function(){
                 ensureHudButton();
                 ensureQuickSelectionButton();
@@ -3074,6 +3075,7 @@ var ModEngineRuntime = (function(){
                     }else if(quickHudRoot != null){
                         removeQuickHud();
                     }
+                    try{ HudPositioning.forceRefresh(); }catch(e){}
                 }catch(eQuick){}
                 try{ if(speedHudRoot == null || !speedHudRoot.hasParent()) ensureSpeedHud(); }catch(eSpeedHud){}
             }
