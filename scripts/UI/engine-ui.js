@@ -505,6 +505,13 @@ var ModEngineUI = (function(){
         d.cont.clear();
         d.buttons.clear();
         d.addCloseListener();
+        // Reset Scl to 1.0 for nested dialogs. They are short-lived and the auto-scale
+        // we apply to the main dialog is already wrong for smaller sub-panels where
+        // text wrap and width math would compound into garbled layouts. Reverting to
+        // native scale inside showThemeDialog keeps the panel readable on every screen
+        // and removes the slider-on-slider overlap reported in bug reports.
+        try{ Scl.scl(1.0); }catch(eSclReset){}
+        state.lastAppliedUiScale = 1.0;
         var body = panel(s.d.panelStrong, gap.xl);
         body.add(sectionHeader("INTERFACE THEME", "ACCENT PROFILE", getIcon("brush", "settings"))).growX().row();
         var names = ["yellow", "purple", "red", "blue", "green", "orange"];
@@ -534,26 +541,28 @@ var ModEngineUI = (function(){
             })(names[i], i);
         }
         body.add(grid).growX().padTop(gap.lg).row();
+
+        // Opacity slider — its own row, then a new row before the UI scale slider so
+        // the two never share horizontal space (this was the layout bug).
         body.add(liveSliderBlock("MENU BACKGROUND OPACITY", 0, 1, 0.01, state.menuOpacity, function(v){ return Math.round(v * 100) + "%"; }, "0%", "50%", "100%", theme.cyan, function(v){
             state.menuOpacity = v;
-        })).growX().padTop(gap.lg);
-        // UI scale override: multiplies the auto-scaled Scl factor (0.65..1.0).
-        // Auto = 1500px reference width. On smaller screens the dialog is already shrunk
-        // before this slider matters; this is the manual knob on top.
+        })).growX().padTop(gap.lg).row();
+
         body.add(liveSliderBlock("UI SCALE (MANUAL OVERRIDE)", 0.65, 1.0, 0.01, state.uiScale, function(v){
             return Math.round(v * 100) + "%";
         }, "65%", "82%", "100%", theme.cyan, function(v){
             state.uiScale = v;
             saveUiScale();
-            if(applyUiScale()) refreshRoot();
-        })).growX().padTop(gap.lg);
+            // applyUiScale is a no-op while nested dialogs use Scl=1, but the saved
+            // value still drives auto-scale on the next main-dialog show.
+            applyUiScale();
+        })).growX().padTop(gap.lg).row();
+
         var hint = label("AUTO-ADAPTS TO SCREEN WIDTH. THIS SLIDER MULTIPLIES THE AUTO VALUE.", s.labelDim, 0.66);
         body.add(hint).left().padTop(gap.xs).row();
         var reset = textButton("RESET UI SCALE", s.action, function(){
             state.uiScale = 1.0;
             saveUiScale();
-            applyUiScale();
-            refreshRoot();
         });
         body.add(reset).height(38).padTop(gap.sm).row();
         d.cont.add(body).width(Math.min(760, Math.max(430, ArcCore.graphics.getWidth() - 100)));
