@@ -2745,6 +2745,10 @@ var ModEngineRuntime = (function(){
             try{
                 unit.set(ui.state.markerX, ui.state.markerY);
                 try{ unit.vel.setZero(); }catch(eVel){}
+                // Inspector marker disappears after teleport (same as spawn marker behaviour).
+                ui.state.markerActive = false;
+                ui.state.markerArmed = false;
+                markerLastTapMillis = 0;
                 notify("UNIT MOVED TO MARKER");
             }catch(eMove){
                 Log.err("Marker teleport failed", eMove);
@@ -2828,6 +2832,10 @@ var ModEngineRuntime = (function(){
                     moved++;
                 }catch(eMove){}
             }
+            // Inspector marker disappears after group teleport (same as single-unit behaviour).
+            ui.state.markerActive = false;
+            ui.state.markerArmed = false;
+            markerLastTapMillis = 0;
             notify(moved + " UNITS MOVED TO MARKER");
             return;
         }
@@ -3114,7 +3122,7 @@ var ModEngineRuntime = (function(){
                 ui.state.spawnMarkerArmed = false;
                 ui.state.spawnMarkerX = event.tile.worldx();
                 ui.state.spawnMarkerY = event.tile.worldy();
-                notify("SPAWN MARKER SET");
+                notify("SPAWN POINT SET");
                 return;
             }
 
