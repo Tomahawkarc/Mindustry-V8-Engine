@@ -31,8 +31,6 @@ var rangeResourcesChecked = false;
 var rangeCaptureStarted = false;
 
 /* =============================================================================
- * SHIELD-SAFE FBO PASS (fix 1.6.1)
- *
  * Root cause of the broken force shields: Draw.drawRange() runnables are z-tagged
  * queue entries that execute MID-FLUSH of the sorted sprite batch (Arc Draw.java:
  *   drawRange(z, range, begin, end) => draw(z - range, begin); draw(z + range, end)
@@ -47,8 +45,6 @@ var rangeCaptureStarted = false;
  * game's shield runnables at z 124/126, buildBeam at 121/123) are lost or
  * shuffled, shield polygons never reach effectBuffer and render raw to screen,
  * which looks like "shields turned into solid filled blobs".
- *
- * Rule: inside begin/end runnables -> pure GL only. Never touch Core.batch.
  *
  * Fix 1.6.2: restored selectionRect() and selectedBuild() exports (recovered
  * verbatim from commit 3690c20 via the jsDelivr minified build). They were lost
@@ -239,6 +235,48 @@ function targetMarker(x, y, primary, secondary){
     });
 }
 
+// Beautiful small red spawn marker for unit spawn position
+function spawnMarker(x, y){
+    withOverlay(function(){
+        var pulse = 6 + Mathf.absin(Time.time, 4.5, 2.2);
+        var red = Color.valueOf("ff3355");
+        var redDark = Color.valueOf("b81f38");
+
+        // Outer soft glow
+        setDrawColor(red, 0.18);
+        Fill.circle(x, y, pulse + 9);
+
+        // Dashed outer ring (beautiful)
+        Draw.color(red);
+        Lines.stroke(1.4);
+        Drawf.dashCircle(x, y, pulse + 5, red);
+
+        // Main sharp circle
+        Draw.color(red);
+        Lines.stroke(2.1);
+        Lines.circle(x, y, pulse + 0.8);
+
+        // Inner filled small circle
+        setDrawColor(red, 0.95);
+        Fill.circle(x, y, 3.6);
+
+        // Crosshair lines (small elegant)
+        Draw.color(redDark);
+        Lines.stroke(1.8);
+        var arm = 7.5;
+        Lines.line(x - arm, y, x - 2.5, y);
+        Lines.line(x + 2.5, y, x + arm, y);
+        Lines.line(x, y - arm, x, y - 2.5);
+        Lines.line(x, y + 2.5, x, y + arm);
+
+        // Tiny bright core
+        Draw.color(Color.white);
+        Fill.circle(x, y, 1.15);
+
+        Draw.reset();
+    });
+}
+
 // Drag-selection overlay (world coords). Runtime calls this every frame while
 // state.buildSelectionActive && state.buildSelectionDragging.
 function selectionRect(x1, y1, x2, y2, color){
@@ -272,6 +310,7 @@ module.exports = {
     withOverlay: withOverlay,
     rangeCircle: rangeCircle,
     targetMarker: targetMarker,
+    spawnMarker: spawnMarker,
     selectionRect: selectionRect,
     selectedBuild: selectedBuild
 };
