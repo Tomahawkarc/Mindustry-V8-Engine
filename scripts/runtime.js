@@ -477,6 +477,7 @@ var ModEngineRuntime = (function(){
     var speedHudRoot = null;
     var speedHudAnchor = null;
     var speedStackHolder = null;   // используется только для позиционирования speed/quick HUD и правой кнопки меню
+    var isMobilePlatform = false;  // для позиционирования Select HUD: на android - строго справа, на пк - на месте нативного
     var originalsCaptured = false;
     var turretDefaults = [];
     var weaponDefaults = [];
@@ -831,7 +832,6 @@ var ModEngineRuntime = (function(){
 
         // Кнопка меню — ВСЕГДА СПРАВА от НАТИВНОГО якоря ("mobile buttons" или "statustable").
         // НЕ зависит от speed/quick HUD. Всегда flush справа от native anchor.
-        // Больше НЕ ТРОГАЕМ ЭТУ ЛОГИКУ.
         hudRoot.update(run(function(){
             try{
                 var shown = modHudVisible() && anchor != null && anchor.hasParent();
@@ -847,7 +847,6 @@ var ModEngineRuntime = (function(){
                 anchor.localToStageCoordinates(position);
                 extension.pack();
 
-                // Точно как в оригинальном рабочем скрипте:
                 // x = anchorX + width, y = anchorY + height - buttonHeight  (справа, flush)
                 extension.setPosition(
                     position.x + anchor.getWidth(),
@@ -968,7 +967,8 @@ var ModEngineRuntime = (function(){
         quickHudRoot.addChild(holder);
         var quickHudShown = null;
         var quickHudPosTimer = 0;
-        var positionCtrl = HudPositioning.createController();
+        var selectionPos = new Vec2();
+
         quickHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
@@ -977,7 +977,6 @@ var ModEngineRuntime = (function(){
                     quickHudShown = enabled;
                     holder.visible = enabled;
                     if(enabled){
-                        positionCtrl.forceNext();
                         quickHudPosTimer = 999; // форсируем reposition
                     }
                 }
@@ -989,8 +988,24 @@ var ModEngineRuntime = (function(){
 
                 if(quickHudAnchor == null || !quickHudAnchor.hasParent()) quickHudAnchor = findCommandHudButton(Vars.ui.hudGroup);
                 if(quickHudAnchor != null){
-                    // Используем HudPositioning для размещения ПОД другими HUD
-                    HudPositioning.positionUnderOthers(holder, quickHudAnchor);
+                    selectionPos.set(0, 0);
+                    quickHudAnchor.localToStageCoordinates(selectionPos);
+                    holder.pack();
+
+                    if(isMobilePlatform){
+                        // На андроиде: СТРОГО СПРАВА от нативного HUD командования ("command"),
+                        // flush, без зазора. (как главная кнопка меню)
+                        holder.setPosition(
+                            selectionPos.x + quickHudAnchor.getWidth(),
+                            selectionPos.y + quickHudAnchor.getHeight() - holder.getHeight()
+                        );
+                    }else{
+                        // На ПК: прямо НА МЕСТЕ нативного HUD командования.
+                        holder.setPosition(
+                            selectionPos.x,
+                            selectionPos.y + quickHudAnchor.getHeight() - holder.getHeight()
+                        );
+                    }
                     holder.visible = enabled && quickHudAnchor.visible;
                 }else{
                     holder.setPosition(163 + Core.scene.marginLeft, 8 + Core.scene.marginBottom);
@@ -2982,6 +2997,16 @@ var ModEngineRuntime = (function(){
             restoreColoredModMetadata();
             captureOriginals();
             applyGameSpeed(1);
+
+            // Определяем платформу один раз: на андроиде/мобильной - строго справа от command HUD,
+            // на ПК - на месте нативного HUD командования.
+            try{
+                isMobilePlatform = !!Vars.mobile;
+                if(!isMobilePlatform && Core.app != null){
+                    try{ if(Core.app.isMobile) isMobilePlatform = !!Core.app.isMobile(); }catch(eM){}
+                }
+            }catch(ePlat){ isMobilePlatform = false; }
+
             Core.app.post(run(function(){
                 ensureHudButton();
                 ensureQuickSelectionButton();
@@ -3013,6 +3038,15 @@ var ModEngineRuntime = (function(){
             removeSpeedHud();
             HudPositioning.resetCache();
             HudPositioning.forceRefresh();
+
+            // Пере-проверяем платформу (на случай релога)
+            try{
+                isMobilePlatform = !!Vars.mobile;
+                if(!isMobilePlatform && Core.app != null){
+                    try{ if(Core.app.isMobile) isMobilePlatform = !!Core.app.isMobile(); }catch(eM){}
+                }
+            }catch(ePlat2){}
+
             Core.app.post(run(function(){
                 ensureHudButton();
                 ensureQuickSelectionButton();
