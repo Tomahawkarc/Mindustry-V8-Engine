@@ -21,8 +21,6 @@ var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
 var KeyCode = Packages.arc.input.KeyCode;
-var Scl = Packages.arc.scene.ui.layout.Scl;
-
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
 var Tex = Packages.mindustry.ui.Tex;
@@ -181,10 +179,17 @@ var ModEngineUI = (function(){
         unitCustomShield: null,
         selectedWorldUnit: null,
         compact: false,
-        // Global UI scale (Arc Scl). 1.0 = native, 0.65 = minimum. Persisted in settings.
+        // Manual UI scale the user picks in the Theme dialog. Multiplies the auto value.
+        // 1.0 = no manual change, 0.65 = minimum. Persisted in settings.
         uiScale: 1.0,
-        // Last applied scale (effective). Used to detect whether a refresh is needed.
-        lastAppliedUiScale: 1.0
+        // The combined (auto * manual) value we last applied to the root Group. Tracked
+        // so we only invalidate the dialog when something actually changed.
+        lastAppliedUiScale: 1.0,
+        // Cached width class for the current screen. Lets isCompact() return a stable
+        // value during a single show() call even if graphics.getWidth() is queried
+        // mid-layout.
+        lastWidthClass: "wide",
+        lastScreenWidth: 0
     };
 
     var handlers = {};
@@ -505,13 +510,10 @@ var ModEngineUI = (function(){
         d.cont.clear();
         d.buttons.clear();
         d.addCloseListener();
-        // Reset Scl to 1.0 for nested dialogs. They are short-lived and the auto-scale
-        // we apply to the main dialog is already wrong for smaller sub-panels where
-        // text wrap and width math would compound into garbled layouts. Reverting to
-        // native scale inside showThemeDialog keeps the panel readable on every screen
-        // and removes the slider-on-slider overlap reported in bug reports.
-        try{ Scl.scl(1.0); }catch(eSclReset){}
-        state.lastAppliedUiScale = 1.0;
+        // Intentionally do NOT touch the global Scl here. The root Group already has
+        // its own transform-based scale, which is independent of every other dialog
+        // on the stage. Touching the global Scl would shrink the parent main menu
+        // (still on stage) and break its slider input.
         var body = panel(s.d.panelStrong, gap.xl);
         body.add(sectionHeader("INTERFACE THEME", "ACCENT PROFILE", getIcon("brush", "settings"))).growX().row();
         var names = ["yellow", "purple", "red", "blue", "green", "orange"];
@@ -553,8 +555,8 @@ var ModEngineUI = (function(){
         }, "65%", "82%", "100%", theme.cyan, function(v){
             state.uiScale = v;
             saveUiScale();
-            // applyUiScale is a no-op while nested dialogs use Scl=1, but the saved
-            // value still drives auto-scale on the next main-dialog show.
+            // The main menu is the Group that actually has the transform; applying
+            // here gives instant feedback while the dialog is still open.
             applyUiScale();
         })).growX().padTop(gap.lg).row();
 
@@ -563,6 +565,7 @@ var ModEngineUI = (function(){
         var reset = textButton("RESET UI SCALE", s.action, function(){
             state.uiScale = 1.0;
             saveUiScale();
+            applyUiScale();
         });
         body.add(reset).height(38).padTop(gap.sm).row();
         d.cont.add(body).width(Math.min(760, Math.max(430, ArcCore.graphics.getWidth() - 100)));
@@ -598,25 +601,45 @@ var ModEngineUI = (function(){
     }
 
     function isCompact(){
-        // Keep one UI for every platform. The menu must look like the PC layout on mobile too;
-        // only individual scroll panes should handle small screens, not a separate compact menu tree.
-        return false;
+        // Width class:
+        //   narrow  (<900px)  -> compact single-column layout
+        //   medium  (<1300px) -> still compact, but with the wide topbar route label
+        //   wide    (>=1300px)-> full sidebar + wide layout
+        // The class is cached per-show via state.lastWidthClass so a single buildRoot()
+        // call does not flicker between modes when graphics.getWidth() is queried from
+        // nested layout code.
+        var w = 0;
+        try{ w = ArcCore.graphics.getWidth(); }catch(eW){ w = 0; }
+        if(state.lastScreenWidth === w && state.lastWidthClass != null) return state.lastWidthClass === "narrow";
+        state.lastScreenWidth = w;
+        var cls = w < 900 ? "narrow" : (w < 1300 ? "medium" : "wide");
+        state.lastWidthClass = cls;
+        return cls === "narrow";
     }
 
-    // ========== UI scale (auto + manual override) ==========
-    // Scl.scl() is the standard Arc mechanism that scales ALL layout (font sizes, paddings,
-    // widths, heights) of the dialog tree. Mindustry itself uses it in Settings → UI Scale,
-    // so it does not break the native HUD: it scales with the rest of the scene.
+    function widthClass(){
+        // Returns "narrow" / "medium" / "wide" for the current screen, cached per
+        // show() call. Used by code that needs to know the *current* class, not
+        // just whether compact mode is active.
+        try{ isCompact(); }catch(eCompact){}
+        return state.lastWidthClass || "wide";
+    }
+
+    // ========== UI scale (auto + manual override, local transform) ==========
+    // We do NOT call the global Scl.scl(). Instead we apply a transform to the root
+    // Group of the main menu. That keeps Mindustry's native UI scale at 1.0 (so other
+    // mod panels are unaffected) while still letting the user shrink the mod menu on
+    // small screens or with a manual slider.
     //
-    // Auto scale kicks in below 1500px screen width and goes down to 0.65 on tiny screens.
-    // The user can multiply the result via state.uiScale (slider in Theme dialog).
+    // Auto scale kicks in below 1500px screen width and goes down to 0.65 on tiny
+    // screens. The user can multiply that via state.uiScale.
     function uiScaleSettingsKey(){
         return "mod-engine-ui-scale-v1";
     }
 
     function loadUiScale(){
         try{
-            var saved = Core.settings.getFloat(uiScaleSettingsKey(), 1.0);
+            var saved = ArcCore.settings.getFloat(uiScaleSettingsKey(), 1.0);
             if(isNaN(saved)) saved = 1.0;
             state.uiScale = Math.max(0.65, Math.min(1.0, saved));
         }catch(e){
@@ -626,24 +649,24 @@ var ModEngineUI = (function(){
 
     function saveUiScale(){
         try{
-            Core.settings.put(uiScaleSettingsKey(), state.uiScale);
-            Core.settings.forceSave();
+            ArcCore.settings.put(uiScaleSettingsKey(), state.uiScale);
+            ArcCore.settings.forceSave();
         }catch(eSave){}
     }
 
-    // The "comfortable" target width below which we start shrinking. 1500 covers the
-    // menu's sidebar+content layout without overflow on a 1080p display.
+    // "Comfortable" target width. Below this we start shrinking so the menu fits.
     function autoUiScale(screenWidth){
         if(screenWidth == null || screenWidth <= 0) return 1.0;
         var ratio = screenWidth / 1500.0;
-        // Slight ease so huge screens (>2000px) keep 1.0 instead of growing.
         if(ratio >= 1.0) return 1.0;
         return Math.max(0.65, Math.min(1.0, ratio));
     }
 
-    // Effective scale = auto * manual. Manual is a multiplier (0.65..1.0) the user can tune.
+    // Effective scale = auto * manual, clamped to the safe 0.65..1.0 range.
     function effectiveUiScale(){
-        var auto = autoUiScale(ArcCore.graphics.getWidth());
+        var w = 0;
+        try{ w = ArcCore.graphics.getWidth(); }catch(eW){ w = 0; }
+        var auto = autoUiScale(w);
         var manual = state.uiScale == null ? 1.0 : state.uiScale;
         var combined = auto * manual;
         if(combined < 0.65) combined = 0.65;
@@ -651,14 +674,26 @@ var ModEngineUI = (function(){
         return combined;
     }
 
-    // Apply Scl.scl to the running scene. Safe to call repeatedly; Arc treats it as a
-    // setter. We remember the last applied value so callers can decide whether to rebuild.
+    // Apply the transform-based scale to the root Group. Returns true if the value
+    // changed (so the caller can decide whether a full rebuild is needed). The
+    // transform is set in-place and only one Group is affected, so nested dialogs
+    // are not disturbed.
     function applyUiScale(){
         var next = effectiveUiScale();
-        if(Math.abs(next - state.lastAppliedUiScale) < 0.001) return false;
-        try{ Scl.scl(next); }catch(eScl){}
-        state.lastAppliedUiScale = next;
-        return true;
+        var changed = Math.abs(next - state.lastAppliedUiScale) >= 0.001;
+        if(changed) state.lastAppliedUiScale = next;
+        if(root != null){
+            try{
+                // setTransform(true) is required for the Group to actually apply
+                // scale/rotation when drawing its children. Origin is set to the
+                // top-left so the menu stays anchored to the top-left of the screen
+                // and the scaled Group still covers the full screen.
+                if(!root.transform) root.setTransform(true);
+                root.setOrigin(0, 0);
+                root.setScale(next, next);
+            }catch(eScale){}
+        }
+        return changed;
     }
 
     function isPhoneWidth(){
@@ -5428,12 +5463,17 @@ var ModEngineUI = (function(){
         try{
             dialog.resized(run(function(){
                 if(dialog == null || !dialog.isShown()) return;
-                // Re-apply UI scale on resize so smaller windows always use the smaller scale.
-                if(applyUiScale()){
-                    // Scale changed: full rebuild is required because every Table was laid
-                    // out under the previous Scl factor.
+                // The width class can change when the window is resized (phone rotation,
+                // split-screen, etc.) and the new class must rebuild the layout. We
+                // also re-apply the transform scale in case the auto branch picked a
+                // new factor for the new width.
+                var prevClass = state.lastWidthClass;
+                var prevWidth = state.lastScreenWidth;
+                state.lastScreenWidth = -1; // force isCompact() to recompute
+                var widthChanged = isCompact() ? prevClass !== "narrow" : prevClass === "narrow";
+                if(widthChanged || prevWidth !== state.lastScreenWidth){
                     refreshRoot();
-                }else{
+                }else if(applyUiScale()){
                     refreshRoot();
                 }
             }));
@@ -5563,10 +5603,16 @@ var ModEngineUI = (function(){
         d.setFillParent(true);
         d.cont.setFillParent(true);
         d.cont.margin(0);
-        // Apply auto-scaled Scl before any layout runs. Manual override multiplies it.
-        applyUiScale();
+        // Force the width class to be re-read on this show() so a window that was
+        // resized while the menu was closed is handled correctly.
+        state.lastScreenWidth = -1;
         buildRoot();
+        // Apply the transform-based scale to the root Group after buildRoot creates
+        // it. This must run AFTER d.cont.add(root) below would, but for safety we
+        // run it both before and after to guarantee the transform is set.
+        applyUiScale();
         d.cont.add(root).grow();
+        applyUiScale();
         d.show();
     }
 
