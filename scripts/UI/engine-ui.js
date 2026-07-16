@@ -2922,26 +2922,28 @@ var ModEngineUI = (function(){
         p.add(metricLine("BURST_DMG", String(Math.round(unitStatBurst(unitType))), Math.min(1, unitStatBurst(unitType) / 1000), theme.red)).growX().padTop(gap.lg).row();
 
         // === Beautiful custom spawn position selector ===
-        // Small elegant button in the preview block. On click: arm red marker, hide menu, user taps world.
+        // Small elegant button in the preview block. After a marker is placed, the same
+        // button simply lets the user place it again at a new world tile.
         var spawnPosRow = new Table();
         spawnPosRow.left();
         var hasSpawnMarker = !!state.spawnMarkerActive;
-        var spawnLabel = hasSpawnMarker ? "SPAWN AT MARKER (SET)" : "CHOOSE SPAWN POS";
+        var spawnLabel = hasSpawnMarker ? "PLACE AGAIN" : "PLACE SPAWN POINT";
         var spawnBtnStyle = hasSpawnMarker ? s.primary : s.action;
         var spawnBtn = textButton(spawnLabel, spawnBtnStyle, function(){
             if(state.spawnMarkerActive){
-                // Clear current marker if user clicks again
+                // User wants to move the marker — drop the old one and re-arm placement.
                 state.spawnMarkerActive = false;
-                state.spawnMarkerArmed = false;
+                state.spawnMarkerArmed = true;
                 state.spawnMarkerX = 0;
                 state.spawnMarkerY = 0;
-                rebuildContent(false);
+                try{ hide(); }catch(eHide){}
+                try{ Vars.ui.showInfoToast("TAP WORLD TO PLACE SPAWN POINT", 3); }catch(eToast){}
                 return;
             }
             state.spawnMarkerArmed = true;
             state.spawnMarkerActive = false;
             try{ hide(); }catch(eHide){}
-            try{ Vars.ui.showInfoToast("TAP WORLD TO PLACE RED SPAWN MARKER", 3); }catch(eToast){}
+            try{ Vars.ui.showInfoToast("TAP WORLD TO PLACE SPAWN POINT", 3); }catch(eToast){}
         });
         spawnPosRow.add(spawnBtn).height(34).growX().padRight(gap.sm);
         if(hasSpawnMarker){
