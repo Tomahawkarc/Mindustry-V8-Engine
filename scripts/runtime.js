@@ -832,6 +832,7 @@ var ModEngineRuntime = (function(){
 
         // Кнопка меню — ВСЕГДА СПРАВА от НАТИВНОГО якоря ("mobile buttons" или "statustable").
         // НЕ зависит от speed/quick HUD. Всегда flush справа от native anchor.
+        // Больше НЕ ТРОГАЕМ ЭТУ ЛОГИКУ.
         hudRoot.update(run(function(){
             try{
                 var shown = modHudVisible() && anchor != null && anchor.hasParent();
@@ -847,6 +848,7 @@ var ModEngineRuntime = (function(){
                 anchor.localToStageCoordinates(position);
                 extension.pack();
 
+                // Точно как в оригинальном рабочем скрипте:
                 // x = anchorX + width, y = anchorY + height - buttonHeight  (справа, flush)
                 extension.setPosition(
                     position.x + anchor.getWidth(),
@@ -992,6 +994,13 @@ var ModEngineRuntime = (function(){
                     quickHudAnchor.localToStageCoordinates(selectionPos);
                     holder.pack();
 
+                    // === React to other mods' expandable HUDs (arrow-down panels) ===
+                    // Even though Select is placed relative to "command", nearby expandable HUDs
+                    // may push vertically or cause layout shifts. Force fresh obstacle awareness.
+                    if((quickHudPosTimer % 4) === 0){
+                        HudPositioning.forceRefresh();
+                    }
+
                     if(isMobilePlatform){
                         // На андроиде: СТРОГО СПРАВА от нативного HUD командования ("command"),
                         // flush, без зазора. (как главная кнопка меню)
@@ -1117,9 +1126,13 @@ var ModEngineRuntime = (function(){
                     speedHudPoint.set(0, 0);
                     speedHudAnchor.localToStageCoordinates(speedHudPoint);
 
-                    // Throttled recompute (same as the working file) — major lag fix
+                    // === IMPROVED: always force fresh obstacle scan so we react to expandable HUDs ===
+                    // (other mods' "arrow down" that makes their panel taller)
+                    HudPositioning.forceRefresh();
+
+                    // Throttled recompute inside the stack function + size tracking
                     speedHudProbeTimer++;
-                    if(speedHudBottom == null || speedHudProbeTimer >= 13){
+                    if(speedHudBottom == null || speedHudProbeTimer >= 8){   // faster probe for dynamic HUDs
                         speedHudProbeTimer = 0;
                         speedHudBottom = HudPositioning.hudStackBottom(
                             speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight()
@@ -1139,15 +1152,24 @@ var ModEngineRuntime = (function(){
                     holder.visible = enabled;
                     if(enabled){
                         positionCtrl.forceNext();
+                        HudPositioning.forceRefresh(); // react to other expandable HUDs immediately
                         Core.app.post(run(function(){ repositionSpeedHud(); }));
                     }
-                    // Главная кнопка меню теперь всегда справа — forceNext не требуется
                 }
                 if(!enabled) return;
 
                 speedHudResizeTimer++;
                 if(speedHudResizeTimer < 85) return;   // big lag fix
                 speedHudResizeTimer = 0;
+
+                // === NEW: react to expandable HUDs from other mods (arrow-down buttons etc) ===
+                // Every ~12 frames we force a fresh obstacle scan so our stack moves when
+                // another mod's HUD grows after the user clicks its "expand" arrow.
+                // The detection inside hud-positioning.js also auto-invalidates on size change.
+                if((speedHudResizeTimer % 4) === 0){
+                    HudPositioning.forceRefresh();
+                    positionCtrl.forceNext();
+                }
 
                 if(speedHudAnchor == null || !speedHudAnchor.hasParent()){
                     speedHudAnchor = HudPositioning.findBestAnchor() || Vars.ui.hudGroup.find("statustable");
@@ -3130,6 +3152,7 @@ var ModEngineRuntime = (function(){
                     }else if(quickHudRoot != null){
                         removeQuickHud();
                     }
+                    // Force fresh scan so we react to other mods' expandable HUDs (arrow buttons etc.)
                     try{ HudPositioning.forceRefresh(); }catch(e){}
                 }catch(eQuick){}
                 try{ if(speedHudRoot == null || !speedHudRoot.hasParent()) ensureSpeedHud(); }catch(eSpeedHud){}
