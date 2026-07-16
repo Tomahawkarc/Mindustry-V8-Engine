@@ -1,4 +1,7 @@
 /**
+ * HUD Positioning — direct port of the WORKING logic from the attached runtime.js
+ * + minimal lag fixes (caching + throttling).
+ *
  * The core functions (collectHudObstacles + hudStackBottom) are taken almost verbatim
  * from the version the user said "works absolutely".
  */
@@ -18,11 +21,19 @@
     // ====================== CACHE ======================
     var _cache = {};
     var _lastFrame = 0;
-    var CACHE_TTL = 12; // frames (~0.2s)
+    var CACHE_TTL = 3; // very short TTL so expandable HUDs (arrow-down) are detected quickly
+
+    // Track last seen sizes of obstacles so we can react when they expand/collapse
+    var _lastSizes = {}; // key -> {w, h}
+    var _needsRecompute = false;   // set when we saw any obstacle change size (arrow click etc)
+    var _forceFresh = false;       // explicit full refresh request
 
     function clearCache(){
         _cache = {};
         _lastFrame = 0;
+        _lastSizes = {};
+        _needsRecompute = false;
+        _forceFresh = false;
     }
 
     function getKey(anchor, x, width){
@@ -30,6 +41,12 @@
             var id = anchor && anchor.name ? String(anchor.name) : "a";
             return id + "|" + (x|0) + "|" + (width|0);
         }catch(e){ return "def"; }
+    }
+
+    function getObsKey(p){
+        // position-only key (top-left) for live size tracking of expandable HUDs
+        // size is stored in value; this way expand/collapse (different h at same x,y) is detected reliably
+        return ((p.x|0) + "|" + (p.y|0));
     }
 
     // ====================== EXACT WORKING LOGIC ======================
@@ -59,7 +76,7 @@
     function collectHudObstacles(element, anchor, x, width, out, depth){
         if(element == null || out.length > 64) return;
         if(depth === undefined) depth = 0;
-        if(depth > 5) return;                    // lag protection
+        if(depth > 6) return;                    // slightly higher for expandable HUDs
 
         if(belongsToModEngineHud(element)) return;
 
@@ -73,14 +90,28 @@
             var stageH = Core.scene.getHeight() || 600;
 
             // === EXACT CONDITIONS FROM THE WORKING FILE ===
-            if(!belongsToModEngineHud(element) &&
+            var isCandidate = !belongsToModEngineHud(element) &&
                effectivelyVisible(element) &&
                ew >= 70 && eh >= 18 &&
-               ew < stageW * 0.72 && eh < stageH * 0.45){
+               ew < stageW * 0.72 && eh < stageH * 0.45;
 
+            if(isCandidate){
                 var p = obtainVec();
                 p.set(0, 0);
                 element.localToStageCoordinates(p);
+
+                // === NEW: live expansion detection for "arrow down" type HUDs ===
+                var obsKey = getObsKey(p);
+                var last = _lastSizes[obsKey];
+                var sizeChanged = !last || last.w !== (ew|0) || last.h !== (eh|0);
+                if(sizeChanged){
+                    // another mod expanded (or collapsed) its HUD (e.g. arrow button) → force recompute
+                    _cache = {};
+                    _lastFrame = 0;
+                    _needsRecompute = true;
+                    _forceFresh = true;
+                }
+                _lastSizes[obsKey] = {w: (ew|0), h: (eh|0)};
 
                 var overlap = Math.min(x + width, p.x + ew) - Math.max(x, p.x);
                 if(overlap >= 28){
@@ -93,7 +124,7 @@
         try{
             if(element instanceof Group){
                 var children = element.getChildren();
-                var lim = Math.min(children.size, 80); // lag protection
+                var lim = Math.min(children.size, 90); // a bit more for dynamic children
                 for(var i = 0; i < lim; i++){
                     collectHudObstacles(children.items[i], anchor, x, width, out, depth + 1);
                 }
@@ -110,7 +141,8 @@
         var key = getKey(anchor, x, width);
         var frame = Time.millis ? ((Time.millis() / 16) | 0) : 0;
 
-        if(_cache[key] !== undefined && (frame - _lastFrame) < CACHE_TTL){
+        var force = _forceFresh || _needsRecompute;
+        if(!force && _cache[key] !== undefined && (frame - _lastFrame) < CACHE_TTL){
             return _cache[key];
         }
 
@@ -135,6 +167,12 @@
 
         _cache[key] = boundary;
         _lastFrame = frame;
+
+        // clear the one-time force flags after use
+        if(force){
+            _forceFresh = false;
+            _needsRecompute = false;
+        }
 
         var minY = 4;
         if(hudHeight && (boundary - hudHeight < minY)){
@@ -184,6 +222,11 @@
                 var p = obtainVec();
                 p.set(0, 0);
                 anchor.localToStageCoordinates(p);
+                // Force fresh scan so expandable HUDs (arrow-down) are respected
+                if(_needsRecompute || _forceFresh) {
+                    _cache = {};
+                    _lastFrame = 0;
+                }
                 var bottom = hudStackBottom(anchor, p.y, p.x, holder.getWidth(), holder.getHeight());
                 holder.setPosition(preferredX !== undefined ? preferredX : p.x, bottom - holder.getHeight());
                 freeVec(p);
@@ -214,7 +257,14 @@
         },
 
         resetCache: clearCache,
-        forceRefresh: clearCache,
+        forceRefresh: function(){
+            // set flags for immediate full recompute + live size tracking
+            _needsRecompute = true;
+            _forceFresh = true;
+            // invalidate position cache but KEEP _lastSizes so expansion detection works across calls
+            _cache = {};
+            _lastFrame = 0;
+        },
 
         createHudContainer: function(name){
             var t = new Table();
