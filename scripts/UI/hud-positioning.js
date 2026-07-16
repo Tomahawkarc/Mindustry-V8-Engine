@@ -1,7 +1,6 @@
 /**
  * HUD Positioning — direct port of the WORKING logic from the attached runtime.js
  * + minimal lag fixes (caching + throttling).
- *
  * The core functions (collectHudObstacles + hudStackBottom) are taken almost verbatim
  * from the version the user said "works absolutely".
  */
@@ -13,12 +12,10 @@
     var Vars = Packages.mindustry.Vars;
     var Time = Packages.arc.util.Time;
 
-    // ====================== POOL ======================
     var vecPool = [];
     function obtainVec(){ return vecPool.length ? vecPool.pop() : new Vec2(); }
     function freeVec(v){ if(v && vecPool.length < 12) vecPool.push(v); }
 
-    // ====================== CACHE ======================
     var _cache = {};
     var _lastFrame = 0;
     var CACHE_TTL = 3; // very short TTL so expandable HUDs (arrow-down) are detected quickly
@@ -89,7 +86,6 @@
             var stageW = Core.scene.getWidth() || 800;
             var stageH = Core.scene.getHeight() || 600;
 
-            // === EXACT CONDITIONS FROM THE WORKING FILE ===
             var isCandidate = !belongsToModEngineHud(element) &&
                effectivelyVisible(element) &&
                ew >= 70 && eh >= 18 &&
@@ -100,7 +96,6 @@
                 p.set(0, 0);
                 element.localToStageCoordinates(p);
 
-                // === NEW: live expansion detection for "arrow down" type HUDs ===
                 var obsKey = getObsKey(p);
                 var last = _lastSizes[obsKey];
                 var sizeChanged = !last || last.w !== (ew|0) || last.h !== (eh|0);
@@ -151,7 +146,6 @@
 
         var boundary = anchorBottom;
 
-        // === EXACT CHAIN FOLLOWING FROM THE WORKING FILE ===
         for(var pass = 0; pass < 12; pass++){
             var next = boundary;
             for(var i = 0; i < obstacles.length; i++){
@@ -181,7 +175,6 @@
         return boundary;
     }
 
-    // ====================== ADAPTIVE CONTROLLER ======================
     function PositionController(){
         this.lastX = -99999;
         this.lastY = -99999;
@@ -208,7 +201,6 @@
         this.lastX = this.lastY = -99999; this.stable = 0; this.total = 0;
     };
 
-    // ====================== PUBLIC API ======================
     var HudPositioning = {
         VERSION: "2.3-working-port-optimized",
 
