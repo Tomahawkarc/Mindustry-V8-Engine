@@ -21,6 +21,7 @@ var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
 var KeyCode = Packages.arc.input.KeyCode;
+var Scl = Packages.arc.scene.ui.layout.Scl;
 
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
@@ -179,7 +180,11 @@ var ModEngineUI = (function(){
         unitCustomHealth: null,
         unitCustomShield: null,
         selectedWorldUnit: null,
-        compact: false
+        compact: false,
+        // Global UI scale (Arc Scl). 1.0 = native, 0.65 = minimum. Persisted in settings.
+        uiScale: 1.0,
+        // Last applied scale (effective). Used to detect whether a refresh is needed.
+        lastAppliedUiScale: 1.0
     };
 
     var handlers = {};
@@ -532,6 +537,25 @@ var ModEngineUI = (function(){
         body.add(liveSliderBlock("MENU BACKGROUND OPACITY", 0, 1, 0.01, state.menuOpacity, function(v){ return Math.round(v * 100) + "%"; }, "0%", "50%", "100%", theme.cyan, function(v){
             state.menuOpacity = v;
         })).growX().padTop(gap.lg);
+        // UI scale override: multiplies the auto-scaled Scl factor (0.65..1.0).
+        // Auto = 1500px reference width. On smaller screens the dialog is already shrunk
+        // before this slider matters; this is the manual knob on top.
+        body.add(liveSliderBlock("UI SCALE (MANUAL OVERRIDE)", 0.65, 1.0, 0.01, state.uiScale, function(v){
+            return Math.round(v * 100) + "%";
+        }, "65%", "82%", "100%", theme.cyan, function(v){
+            state.uiScale = v;
+            saveUiScale();
+            if(applyUiScale()) refreshRoot();
+        })).growX().padTop(gap.lg);
+        var hint = label("AUTO-ADAPTS TO SCREEN WIDTH. THIS SLIDER MULTIPLIES THE AUTO VALUE.", s.labelDim, 0.66);
+        body.add(hint).left().padTop(gap.xs).row();
+        var reset = textButton("RESET UI SCALE", s.action, function(){
+            state.uiScale = 1.0;
+            saveUiScale();
+            applyUiScale();
+            refreshRoot();
+        });
+        body.add(reset).height(38).padTop(gap.sm).row();
         d.cont.add(body).width(Math.min(760, Math.max(430, ArcCore.graphics.getWidth() - 100)));
         d.buttons.add(textButton("CLOSE", s.action, function(){ d.hide(); })).height(48).width(180).padTop(gap.md);
         d.show();
@@ -559,12 +583,73 @@ var ModEngineUI = (function(){
                 state.hotkeyBinds[hotkeyId] = config.hotkeys[hotkeyId];
             }
         }
+        // Load persisted UI scale the first time runtime binds us. Subsequent calls
+        // (e.g. hotkey updates) are no-ops because state.uiScale is already populated.
+        loadUiScale();
     }
 
     function isCompact(){
         // Keep one UI for every platform. The menu must look like the PC layout on mobile too;
         // only individual scroll panes should handle small screens, not a separate compact menu tree.
         return false;
+    }
+
+    // ========== UI scale (auto + manual override) ==========
+    // Scl.scl() is the standard Arc mechanism that scales ALL layout (font sizes, paddings,
+    // widths, heights) of the dialog tree. Mindustry itself uses it in Settings → UI Scale,
+    // so it does not break the native HUD: it scales with the rest of the scene.
+    //
+    // Auto scale kicks in below 1500px screen width and goes down to 0.65 on tiny screens.
+    // The user can multiply the result via state.uiScale (slider in Theme dialog).
+    function uiScaleSettingsKey(){
+        return "mod-engine-ui-scale-v1";
+    }
+
+    function loadUiScale(){
+        try{
+            var saved = Core.settings.getFloat(uiScaleSettingsKey(), 1.0);
+            if(isNaN(saved)) saved = 1.0;
+            state.uiScale = Math.max(0.65, Math.min(1.0, saved));
+        }catch(e){
+            state.uiScale = 1.0;
+        }
+    }
+
+    function saveUiScale(){
+        try{
+            Core.settings.put(uiScaleSettingsKey(), state.uiScale);
+            Core.settings.forceSave();
+        }catch(eSave){}
+    }
+
+    // The "comfortable" target width below which we start shrinking. 1500 covers the
+    // menu's sidebar+content layout without overflow on a 1080p display.
+    function autoUiScale(screenWidth){
+        if(screenWidth == null || screenWidth <= 0) return 1.0;
+        var ratio = screenWidth / 1500.0;
+        // Slight ease so huge screens (>2000px) keep 1.0 instead of growing.
+        if(ratio >= 1.0) return 1.0;
+        return Math.max(0.65, Math.min(1.0, ratio));
+    }
+
+    // Effective scale = auto * manual. Manual is a multiplier (0.65..1.0) the user can tune.
+    function effectiveUiScale(){
+        var auto = autoUiScale(ArcCore.graphics.getWidth());
+        var manual = state.uiScale == null ? 1.0 : state.uiScale;
+        var combined = auto * manual;
+        if(combined < 0.65) combined = 0.65;
+        if(combined > 1.0) combined = 1.0;
+        return combined;
+    }
+
+    // Apply Scl.scl to the running scene. Safe to call repeatedly; Arc treats it as a
+    // setter. We remember the last applied value so callers can decide whether to rebuild.
+    function applyUiScale(){
+        var next = effectiveUiScale();
+        if(Math.abs(next - state.lastAppliedUiScale) < 0.001) return false;
+        try{ Scl.scl(next); }catch(eScl){}
+        state.lastAppliedUiScale = next;
+        return true;
     }
 
     function isPhoneWidth(){
@@ -5303,6 +5388,9 @@ var ModEngineUI = (function(){
                 savedNavScrollX = navScrollPane.getScrollX();
             }
         }catch(eNav){}
+        // Re-apply scale here too: a rebuild without re-applying would render under the
+        // previous scale if the screen size or user setting changed between show() calls.
+        applyUiScale();
         dialog.cont.clear();
         buildRoot();
         dialog.cont.add(root).grow();
@@ -5330,7 +5418,15 @@ var ModEngineUI = (function(){
         }catch(e){}
         try{
             dialog.resized(run(function(){
-                if(dialog != null && dialog.isShown()) refreshRoot();
+                if(dialog == null || !dialog.isShown()) return;
+                // Re-apply UI scale on resize so smaller windows always use the smaller scale.
+                if(applyUiScale()){
+                    // Scale changed: full rebuild is required because every Table was laid
+                    // out under the previous Scl factor.
+                    refreshRoot();
+                }else{
+                    refreshRoot();
+                }
             }));
         }catch(e2){}
         return dialog;
@@ -5458,6 +5554,8 @@ var ModEngineUI = (function(){
         d.setFillParent(true);
         d.cont.setFillParent(true);
         d.cont.margin(0);
+        // Apply auto-scaled Scl before any layout runs. Manual override multiplies it.
+        applyUiScale();
         buildRoot();
         d.cont.add(root).grow();
         d.show();
