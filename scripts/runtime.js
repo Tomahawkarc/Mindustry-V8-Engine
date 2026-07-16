@@ -486,6 +486,12 @@ var ModEngineRuntime = (function(){
     var markerLastTapMillis = 0;
     var markerLastTileX = -99999;
     var markerLastTileY = -99999;
+
+    // New: custom spawn position marker for units (beautiful red, disappears after use)
+    var spawnMarkerActive = false;
+    var spawnMarkerX = 0;
+    var spawnMarkerY = 0;
+    var spawnMarkerArmed = false;
     var worldWindStrength = 4.2;
     var originalWeatherEntries = [];
     var buildSelectionDragging = false;
@@ -2679,6 +2685,19 @@ var ModEngineRuntime = (function(){
         var amount = payload.amount == null ? 1 : Math.max(1, payload.amount);
         var team = payload.enemy ? enemyTeam() : playerTeam();
         try{ px = Vars.player.x; py = Vars.player.y; }catch(e){}
+
+        // Use custom spawn marker if armed/active (beautiful red marker)
+        if(ui != null && ui.state != null && ui.state.spawnMarkerActive){
+            try{
+                px = ui.state.spawnMarkerX;
+                py = ui.state.spawnMarkerY;
+            }catch(ePos){}
+            // Clear marker after spawn (as requested: disappears after spawn)
+            ui.state.spawnMarkerActive = false;
+            ui.state.spawnMarkerX = 0;
+            ui.state.spawnMarkerY = 0;
+        }
+
         try{
             for(var i = 0; i < amount; i++){
                 var ox = (i % 5) * 12;
@@ -2939,6 +2958,11 @@ var ModEngineRuntime = (function(){
         ModEngineRender.targetMarker(ui.state.markerX, ui.state.markerY, theme.cyan, theme.gold);
     }
 
+    function drawSpawnMarker(){
+        if(ui == null || ui.state == null || !ui.state.spawnMarkerActive) return;
+        ModEngineRender.spawnMarker(ui.state.spawnMarkerX, ui.state.spawnMarkerY);
+    }
+
     function drawTurretRadii(){
         try{
             Groups.build.each(cons(function(build){
@@ -3049,6 +3073,8 @@ var ModEngineRuntime = (function(){
             if(ui != null && ui.state != null){
                 ui.state.markerActive = false;
                 ui.state.markerArmed = false;
+                ui.state.spawnMarkerActive = false;
+                ui.state.spawnMarkerArmed = false;
                 ui.state.buildSelectionActive = false;
                 ui.state.buildSelectionDragging = false;
             }
@@ -3078,10 +3104,21 @@ var ModEngineRuntime = (function(){
         }));
 
         Events.on(TapEvent, cons(function(event){
-            if(ui == null || ui.state == null || !ui.state.markerArmed) return;
+            if(ui == null || ui.state == null) return;
             if(event == null || event.tile == null || event.player == null) return;
             try{ if(Vars.player != null && event.player != Vars.player) return; }catch(ePlayer){}
 
+            // Spawn marker: single tap to place beautiful red marker for unit spawn
+            if(ui.state.spawnMarkerArmed){
+                ui.state.spawnMarkerActive = true;
+                ui.state.spawnMarkerArmed = false;
+                ui.state.spawnMarkerX = event.tile.worldx();
+                ui.state.spawnMarkerY = event.tile.worldy();
+                notify("SPAWN MARKER SET");
+                return;
+            }
+
+            if(!ui.state.markerArmed) return;
             var now = Time.millis();
             var tx = event.tile.x;
             var ty = event.tile.y;
@@ -3125,6 +3162,7 @@ var ModEngineRuntime = (function(){
                 try{ if(drawRanges) ModEngineRender.endRanges(); }catch(eEnd){}
             }
             try{ drawTargetMarker(); }catch(eMarker){}
+            try{ drawSpawnMarker(); }catch(eSpawnMarker){}
             try{
                 if(ui.state.buildSelectionActive && ui.state.buildSelectionDragging){
                     ModEngineRender.selectionRect(ui.state.buildSelectionStartX, ui.state.buildSelectionStartY, ui.state.buildSelectionEndX, ui.state.buildSelectionEndY, theme.green);
