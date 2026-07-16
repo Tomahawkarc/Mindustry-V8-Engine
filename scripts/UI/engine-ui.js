@@ -21,6 +21,8 @@ var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
 var KeyCode = Packages.arc.input.KeyCode;
+var Scl = Packages.arc.scene.ui.layout.Scl;
+
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
 var Tex = Packages.mindustry.ui.Tex;
@@ -625,14 +627,26 @@ var ModEngineUI = (function(){
         return state.lastWidthClass || "wide";
     }
 
-    // ========== UI scale (auto + manual override, local transform) ==========
-    // We do NOT call the global Scl.scl(). Instead we apply a transform to the root
-    // Group of the main menu. That keeps Mindustry's native UI scale at 1.0 (so other
-    // mod panels are unaffected) while still letting the user shrink the mod menu on
-    // small screens or with a manual slider.
+    // ========== UI scale (auto + manual override, global Scl) ==========
+    //
+    // We use Scl.scl() (the standard Arc global multiplier that Mindustry itself
+    // uses in Settings → UI Scale) so the whole mod menu scales uniformly: font
+    // sizes, paddings, widget dimensions and hit-testing all stay in sync because
+    // they are all read from the same scale at layout time.
     //
     // Auto scale kicks in below 1500px screen width and goes down to 0.65 on tiny
     // screens. The user can multiply that via state.uiScale.
+    //
+    // IMPORTANT: we do NOT try to "undo" Scl in nested dialogs. Scl is a global
+    // singleton, but its only effect is to multiply Scl.scl(value) reads inside
+    // every widget's layout. Because sub-dialogs are also built with the same
+    // Scl.scl() active, their layout is consistent with the main menu and every
+    // slider / button works at every scale. Trying to reset Scl to 1.0 inside a
+    // sub-dialog (the previous broken fix) would re-scale the still-visible main
+    // menu and break its input.
+    //
+    // After changing Scl we must rebuild the menu: every Table was laid out under
+    // the old scale and its measured widths/heights are now stale.
     function uiScaleSettingsKey(){
         return "mod-engine-ui-scale-v1";
     }
@@ -674,59 +688,25 @@ var ModEngineUI = (function(){
         return combined;
     }
 
-    // Apply the effective scale to the root Group.
+    // Apply the effective scale via Scl.scl() and rebuild the visible menu so every
+    // child re-measures under the new scale. Returns true if the value changed.
     //
-    // We tried setTransform(true) + setScale(scl) first, but that scales the rendered
-    // pixels only. TextButton/Label in Arc use a font cache that does not follow the
-    // parent transform, so on screen the layout *looked* small but every text and
-    // padding inside was still laid out at the pre-scale logical size. The visual
-    // result was: smaller pixels glued to the top-left of the screen with empty
-    // space on the right, and the slider stop widget lost its hit area entirely.
-    //
-    // The fix is to use setSize(width/scl, height/scl) instead. setSize participates
-    // in Table layout: children re-pack against the smaller logical size, paddings
-    // and percent-width columns shrink proportionally, font baselines stay aligned,
-    // and input hit-testing follows the layout. The visible pixels of the Group are
-    // still drawn at 1:1 because we never setScale, so text remains crisp.
-    //
-    // We also turn off setFillParent on the root for the duration of the scale so the
-    // explicit setSize is not ignored. The dialog.cont still fills the parent so the
-    // menu is anchored to the full screen and the smaller table is centred.
+    // Scl.scl is a global setter in Arc — every arc.scene.ui.layout call that reads
+    // Scl.scl(1) (e.g. for getPrefWidth, Cell.pad, ScaledNinePatchDrawable) uses the
+    // current value. We compare against lastAppliedUiScale and skip if unchanged.
     function applyUiScale(){
         var next = effectiveUiScale();
-        var changed = Math.abs(next - state.lastAppliedUiScale) >= 0.001;
-        if(changed) state.lastAppliedUiScale = next;
-
-        if(root != null && dialog != null){
-            try{
-                // Screen size in the dialog's local coordinate space (== stage px).
-                var sw = 0, sh = 0;
-                try{
-                    var viewport = dialog.getViewport();
-                    if(viewport != null){
-                        sw = viewport.getWorldWidth();
-                        sh = viewport.getWorldHeight();
-                    }
-                }catch(eV){}
-                if(sw <= 0 || sh <= 0){
-                    try{ sw = ArcCore.graphics.getWidth(); }catch(eW){ sw = 0; }
-                    try{ sh = ArcCore.graphics.getHeight(); }catch(eH){ sh = 0; }
-                }
-
-                if(sw > 0 && sh > 0 && next > 0.001){
-                    // Compensating size: child layout packs into this smaller box, so
-                    // every nested Table / ScrollPane / Label computes its size against
-                    // the scaled-down width. No need for setScale on the Group.
-                    root.setSize(sw / next, sh / next);
-                    // Re-anchor the root to the top-left of the dialog so the menu
-                    // covers the same screen area as before. Without this the
-                    // explicit setSize can leave the Group offset.
-                    root.setPosition(0, 0);
-                    // Force re-layout so every child re-reads the new size.
-                    root.invalidate();
-                    root.validate();
-                }
-            }catch(eScale){}
+        var prev = state.lastAppliedUiScale;
+        var changed = Math.abs(next - prev) >= 0.001;
+        if(changed){
+            try{ Scl.scl(next); }catch(eScl){}
+            state.lastAppliedUiScale = next;
+            // Rebuild the visible tree: the dialog must be visible for a refresh to
+            // make sense. show()/refreshRoot() also call this on their own; we guard
+            // against double-rebuild by comparing prev vs next.
+            if(dialog != null && dialog.isShown()){
+                refreshRoot();
+            }
         }
         return changed;
     }
@@ -5467,16 +5447,13 @@ var ModEngineUI = (function(){
                 savedNavScrollX = navScrollPane.getScrollX();
             }
         }catch(eNav){}
-        // Re-apply scale here too: a rebuild without re-applying would render under the
-        // previous scale if the screen size or user setting changed between show() calls.
-        applyUiScale();
+        // No need to call applyUiScale here: Scl is a global singleton, and show()
+        // already applied it. Calling it again would cause an extra full rebuild
+        // when the user changes the manual scale slider, because applyUiScale()
+        // calls refreshRoot() itself on scale change.
         dialog.cont.clear();
         buildRoot();
-        // Same rationale as show(): no .grow(), applyUiScale() sizes the root
-        // exactly. The smaller root Table covers the top-left of the dialog; the
-        // empty space around it shows through the dialog background.
-        dialog.cont.add(root);
-        applyUiScale();
+        dialog.cont.add(root).grow();
         try{
             ArcCore.app.post(run(function(){
                 try{
@@ -5502,17 +5479,16 @@ var ModEngineUI = (function(){
         try{
             dialog.resized(run(function(){
                 if(dialog == null || !dialog.isShown()) return;
-                // The width class can change when the window is resized (phone rotation,
-                // split-screen, etc.) and the new class must rebuild the layout. We
-                // also re-apply the transform scale in case the auto branch picked a
-                // new factor for the new width.
+                // The width class can change when the window is resized (phone
+                // rotation, split-screen, etc.) and the new class must rebuild
+                // the layout. We do NOT call applyUiScale() here: the Scl value
+                // depends on graphics.getWidth() which already returned the new
+                // size, so applyUiScale() called from show() will pick it up
+                // on the next refreshRoot.
                 var prevClass = state.lastWidthClass;
-                var prevWidth = state.lastScreenWidth;
                 state.lastScreenWidth = -1; // force isCompact() to recompute
                 var widthChanged = isCompact() ? prevClass !== "narrow" : prevClass === "narrow";
-                if(widthChanged || prevWidth !== state.lastScreenWidth){
-                    refreshRoot();
-                }else if(applyUiScale()){
+                if(widthChanged){
                     refreshRoot();
                 }
             }));
@@ -5645,14 +5621,11 @@ var ModEngineUI = (function(){
         // Force the width class to be re-read on this show() so a window that was
         // resized while the menu was closed is handled correctly.
         state.lastScreenWidth = -1;
-        buildRoot();
-        // IMPORTANT: do not add the root with .grow(). .grow() forces the cell to
-        // fill the parent Table and would overwrite any setSize we apply below.
-        // We add the root without grow and let applyUiScale() set its exact size
-        // for the auto-scaled layout. The Group is anchored to (0,0) so the
-        // smaller-than-screen root sits in the top-left of the dialog.
-        d.cont.add(root);
+        // Apply the current Scl BEFORE building the root so every nested Table
+        // measures its widgets against the right scale on first layout.
         applyUiScale();
+        buildRoot();
+        d.cont.add(root).grow();
         d.show();
     }
 
