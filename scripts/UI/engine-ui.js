@@ -674,23 +674,58 @@ var ModEngineUI = (function(){
         return combined;
     }
 
-    // Apply the transform-based scale to the root Group. Returns true if the value
-    // changed (so the caller can decide whether a full rebuild is needed). The
-    // transform is set in-place and only one Group is affected, so nested dialogs
-    // are not disturbed.
+    // Apply the effective scale to the root Group.
+    //
+    // We tried setTransform(true) + setScale(scl) first, but that scales the rendered
+    // pixels only. TextButton/Label in Arc use a font cache that does not follow the
+    // parent transform, so on screen the layout *looked* small but every text and
+    // padding inside was still laid out at the pre-scale logical size. The visual
+    // result was: smaller pixels glued to the top-left of the screen with empty
+    // space on the right, and the slider stop widget lost its hit area entirely.
+    //
+    // The fix is to use setSize(width/scl, height/scl) instead. setSize participates
+    // in Table layout: children re-pack against the smaller logical size, paddings
+    // and percent-width columns shrink proportionally, font baselines stay aligned,
+    // and input hit-testing follows the layout. The visible pixels of the Group are
+    // still drawn at 1:1 because we never setScale, so text remains crisp.
+    //
+    // We also turn off setFillParent on the root for the duration of the scale so the
+    // explicit setSize is not ignored. The dialog.cont still fills the parent so the
+    // menu is anchored to the full screen and the smaller table is centred.
     function applyUiScale(){
         var next = effectiveUiScale();
         var changed = Math.abs(next - state.lastAppliedUiScale) >= 0.001;
         if(changed) state.lastAppliedUiScale = next;
-        if(root != null){
+
+        if(root != null && dialog != null){
             try{
-                // setTransform(true) is required for the Group to actually apply
-                // scale/rotation when drawing its children. Origin is set to the
-                // top-left so the menu stays anchored to the top-left of the screen
-                // and the scaled Group still covers the full screen.
-                if(!root.transform) root.setTransform(true);
-                root.setOrigin(0, 0);
-                root.setScale(next, next);
+                // Screen size in the dialog's local coordinate space (== stage px).
+                var sw = 0, sh = 0;
+                try{
+                    var viewport = dialog.getViewport();
+                    if(viewport != null){
+                        sw = viewport.getWorldWidth();
+                        sh = viewport.getWorldHeight();
+                    }
+                }catch(eV){}
+                if(sw <= 0 || sh <= 0){
+                    try{ sw = ArcCore.graphics.getWidth(); }catch(eW){ sw = 0; }
+                    try{ sh = ArcCore.graphics.getHeight(); }catch(eH){ sh = 0; }
+                }
+
+                if(sw > 0 && sh > 0 && next > 0.001){
+                    // Compensating size: child layout packs into this smaller box, so
+                    // every nested Table / ScrollPane / Label computes its size against
+                    // the scaled-down width. No need for setScale on the Group.
+                    root.setSize(sw / next, sh / next);
+                    // Re-anchor the root to the top-left of the dialog so the menu
+                    // covers the same screen area as before. Without this the
+                    // explicit setSize can leave the Group offset.
+                    root.setPosition(0, 0);
+                    // Force re-layout so every child re-reads the new size.
+                    root.invalidate();
+                    root.validate();
+                }
             }catch(eScale){}
         }
         return changed;
@@ -5437,7 +5472,11 @@ var ModEngineUI = (function(){
         applyUiScale();
         dialog.cont.clear();
         buildRoot();
-        dialog.cont.add(root).grow();
+        // Same rationale as show(): no .grow(), applyUiScale() sizes the root
+        // exactly. The smaller root Table covers the top-left of the dialog; the
+        // empty space around it shows through the dialog background.
+        dialog.cont.add(root);
+        applyUiScale();
         try{
             ArcCore.app.post(run(function(){
                 try{
@@ -5607,11 +5646,12 @@ var ModEngineUI = (function(){
         // resized while the menu was closed is handled correctly.
         state.lastScreenWidth = -1;
         buildRoot();
-        // Apply the transform-based scale to the root Group after buildRoot creates
-        // it. This must run AFTER d.cont.add(root) below would, but for safety we
-        // run it both before and after to guarantee the transform is set.
-        applyUiScale();
-        d.cont.add(root).grow();
+        // IMPORTANT: do not add the root with .grow(). .grow() forces the cell to
+        // fill the parent Table and would overwrite any setSize we apply below.
+        // We add the root without grow and let applyUiScale() set its exact size
+        // for the auto-scaled layout. The Group is anchored to (0,0) so the
+        // smaller-than-screen root sits in the top-left of the dialog.
+        d.cont.add(root);
         applyUiScale();
         d.show();
     }
