@@ -108,6 +108,10 @@ var ModEngineUI = (function(){
         markerY: 0,
         markerTileX: 0,
         markerTileY: 0,
+        spawnMarkerActive: false,
+        spawnMarkerArmed: false,
+        spawnMarkerX: 0,
+        spawnMarkerY: 0,
         buildSelectionActive: false,
         buildSelectionDragging: false,
         buildSelectionStartX: 0,
@@ -2916,6 +2920,40 @@ var ModEngineUI = (function(){
         p.add(gauges).center().padTop(gap.xl).row();
         p.add(metricLine("MOV_SPEED", ((unitType != null && unitType.speed != null) ? unitType.speed.toFixed(2) : "0.00") + " T/SEC", Math.min(1, (unitType != null ? unitType.speed : 0) / 10), theme.cyan)).growX().padTop(gap.lg).row();
         p.add(metricLine("BURST_DMG", String(Math.round(unitStatBurst(unitType))), Math.min(1, unitStatBurst(unitType) / 1000), theme.red)).growX().padTop(gap.lg).row();
+
+        // === Beautiful custom spawn position selector ===
+        // Small elegant button in the preview block. On click: arm red marker, hide menu, user taps world.
+        var spawnPosRow = new Table();
+        spawnPosRow.left();
+        var hasSpawnMarker = !!state.spawnMarkerActive;
+        var spawnLabel = hasSpawnMarker ? "SPAWN AT MARKER (SET)" : "CHOOSE SPAWN POS";
+        var spawnBtnStyle = hasSpawnMarker ? s.primary : s.action;
+        var spawnBtn = textButton(spawnLabel, spawnBtnStyle, function(){
+            if(state.spawnMarkerActive){
+                // Clear current marker if user clicks again
+                state.spawnMarkerActive = false;
+                state.spawnMarkerArmed = false;
+                state.spawnMarkerX = 0;
+                state.spawnMarkerY = 0;
+                rebuildContent(false);
+                return;
+            }
+            state.spawnMarkerArmed = true;
+            state.spawnMarkerActive = false;
+            try{ hide(); }catch(eHide){}
+            try{ Vars.ui.showInfoToast("TAP WORLD TO PLACE RED SPAWN MARKER", 3); }catch(eToast){}
+        });
+        spawnPosRow.add(spawnBtn).height(34).growX().padRight(gap.sm);
+        if(hasSpawnMarker){
+            spawnPosRow.add(textButton("CLEAR", s.danger, function(){
+                state.spawnMarkerActive = false;
+                state.spawnMarkerArmed = false;
+                state.spawnMarkerX = 0;
+                state.spawnMarkerY = 0;
+                rebuildContent(false);
+            })).height(34).width(68);
+        }
+        p.add(spawnPosRow).growX().padTop(gap.sm).row();
 
         var customPanel = panel(s.d.panel, gap.md);
         customPanel.add(label("CUSTOM STATS", s.labelGold, 0.78)).left().row();
