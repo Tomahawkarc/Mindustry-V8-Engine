@@ -218,19 +218,27 @@ function rangeCircle(x, y, radius, color, alpha, phase){
 
 function targetMarker(x, y, primary, secondary){
     withOverlay(function(){
-        var pulse = 11 + Mathf.absin(Time.time, 6, 3);
-        setDrawColor(primary, 0.14);
-        Fill.circle(x, y, pulse + 6);
-        Drawf.dashCircle(x, y, pulse + 2, primary);
+        // Small cursor-sized marker: pulse oscillates around ~4 tiles (≈ cursor size)
+        var pulse = 3.6 + Mathf.absin(Time.time, 5, 0.8);
+        // Soft glow halo
+        setDrawColor(primary, 0.16);
+        Fill.circle(x, y, pulse + 3);
+        // Dashed ring
+        setDrawColor(primary, 0.85);
+        Drawf.dashCircle(x, y, pulse + 1.4, primary);
+        // Sharp circle
         Draw.color(primary);
-        Lines.stroke(1.7);
+        Lines.stroke(1.2);
         Lines.circle(x, y, pulse);
-        Lines.line(x - pulse - 7, y, x - 4, y);
-        Lines.line(x + 4, y, x + pulse + 7, y);
-        Lines.line(x, y - pulse - 7, x, y - 4);
-        Lines.line(x, y + 4, x, y + pulse + 7);
+        // Small crosshair ticks
+        Lines.stroke(1.1);
+        Lines.line(x - pulse - 3, y, x - 1.4, y);
+        Lines.line(x + 1.4, y, x + pulse + 3, y);
+        Lines.line(x, y - pulse - 3, x, y - 1.4);
+        Lines.line(x, y + 1.4, x, y + pulse + 3);
+        // Inner bright core dot
         Draw.color(secondary);
-        Fill.circle(x, y, 2.8);
+        Fill.circle(x, y, 1.3);
         Draw.reset();
     });
 }
@@ -238,40 +246,41 @@ function targetMarker(x, y, primary, secondary){
 // Beautiful small red spawn marker for unit spawn position
 function spawnMarker(x, y){
     withOverlay(function(){
-        var pulse = 6 + Mathf.absin(Time.time, 4.5, 2.2);
+        // Cursor-sized red marker: pulse oscillates around ~3.5 tiles
+        var pulse = 3.0 + Mathf.absin(Time.time, 4.5, 0.9);
         var red = Color.valueOf("ff3355");
         var redDark = Color.valueOf("b81f38");
 
         // Outer soft glow
-        setDrawColor(red, 0.18);
-        Fill.circle(x, y, pulse + 9);
+        setDrawColor(red, 0.22);
+        Fill.circle(x, y, pulse + 3.5);
 
         // Dashed outer ring (beautiful)
         Draw.color(red);
-        Lines.stroke(1.4);
-        Drawf.dashCircle(x, y, pulse + 5, red);
+        Lines.stroke(1.1);
+        Drawf.dashCircle(x, y, pulse + 2.0, red);
 
         // Main sharp circle
         Draw.color(red);
-        Lines.stroke(2.1);
-        Lines.circle(x, y, pulse + 0.8);
+        Lines.stroke(1.5);
+        Lines.circle(x, y, pulse + 0.4);
 
         // Inner filled small circle
         setDrawColor(red, 0.95);
-        Fill.circle(x, y, 3.6);
+        Fill.circle(x, y, 1.7);
 
-        // Crosshair lines (small elegant)
+        // Tiny crosshair lines (very small elegant)
         Draw.color(redDark);
-        Lines.stroke(1.8);
-        var arm = 7.5;
-        Lines.line(x - arm, y, x - 2.5, y);
-        Lines.line(x + 2.5, y, x + arm, y);
-        Lines.line(x, y - arm, x, y - 2.5);
-        Lines.line(x, y + 2.5, x, y + arm);
+        Lines.stroke(1.2);
+        var arm = 3.5;
+        Lines.line(x - arm, y, x - 1.1, y);
+        Lines.line(x + 1.1, y, x + arm, y);
+        Lines.line(x, y - arm, x, y - 1.1);
+        Lines.line(x, y + 1.1, x, y + arm);
 
         // Tiny bright core
         Draw.color(Color.white);
-        Fill.circle(x, y, 1.15);
+        Fill.circle(x, y, 0.65);
 
         Draw.reset();
     });
