@@ -21,16 +21,6 @@ var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
 var KeyCode = Packages.arc.input.KeyCode;
-// UI scale: handled LOCALLY in this mod, never via the global Scl singleton.
-// Scl.scl() in Arc is a cached per-JVM value (dp.scl is computed once on the
-// first call and never re-evaluated) so changing it at runtime has no effect
-// on Mindustry / Arc built-in dialogs. Worse, every Cell.width/.pad/.size in
-// Arc is multiplied by Scl.scl(value) at layout time, so on mobile where
-// cached dp.scl >= 1.0 the menu gets *bigger* instead of smaller. We instead
-// apply our own local scale to text and to "fixed-pixel" values where the
-// hard-coded number is too large for a small screen. The menu itself is
-// always stretched to the full screen (dialog.cont.setFillParent(true)) so
-// the layout never overlaps or drifts — only inner content adapts.
 
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
@@ -715,27 +705,19 @@ var ModEngineUI = (function(){
     // mod loads the cache is already populated with the correct value
     // for the current platform. We cache the result locally so we never
     // re-read it.
-    var _sclCached = -1;
     function mindustryScl(){
-        if(_sclCached > 0) return _sclCached;
         try{
             var p = Packages.arc.scene.ui.layout.Scl;
             var v = p.scl(1.0);
-            if(v > 0 && v < 10) _sclCached = v;
+            if(v > 0 && v < 10) return v;
         }catch(e){}
-        if(_sclCached <= 0){
-            // Fall back to a pure getDensity() read if Scl is not yet
-            // available (e.g. the mod is loaded before Mindustry has
-            // initialised its UI subsystem). Same formula, no side effects.
-            try{
-                var d = Number(ArcCore.graphics.getDensity());
-                if(!isNaN(d) && d > 0){
-                    _sclCached = Math.max(Math.round((d / 1.5) / 0.5) * 0.5, 1.0);
-                }
-            }catch(e2){}
-        }
-        if(_sclCached <= 0) _sclCached = 1.0;
-        return _sclCached;
+        try{
+            var d = Number(ArcCore.graphics.getDensity());
+            if(!isNaN(d) && d > 0){
+                return Math.max(Math.round((d / 1.5) / 0.5) * 0.5, 1.0);
+            }
+        }catch(e2){}
+        return 1.0;
     }
 
     // Logical screen width in Mindustry's own units (the same units a
@@ -765,17 +747,17 @@ var ModEngineUI = (function(){
         var cls = widthClass();
 
         var refW = 1350.0;
-        var refH = 720.0;
-        var minScale = 0.65;
+        var refH = 700.0;
+        var minScale = 0.55;
 
         if(cls === "medium"){
             refW = 850.0;
-            refH = 500.0;
-            minScale = 0.70;
+            refH = 480.0;
+            minScale = 0.55;
         }else if(cls === "narrow"){
             refW = 380.0;
-            refH = 500.0;
-            minScale = 0.75;
+            refH = 480.0;
+            minScale = 0.60;
         }
 
         var wRatio = lw / refW;
@@ -5107,7 +5089,7 @@ var ModEngineUI = (function(){
         var head = new Table();
         head.left();
         try{
-            head.image(contentDrawable(entry.type, getIcon("units", "factory"))).size(clampUiSize(40)).padRight(gap.md);
+            head.image(contentDrawable(entry.type, getIcon("units", "factory"))).size(clampUiSize(38)).padRight(gap.md);
         }catch(eIcon){}
         var headText = new Table();
         headText.left();
@@ -5127,6 +5109,7 @@ var ModEngineUI = (function(){
 
         var assignRow = new Table();
         assignRow.left();
+        var itemsPerRow = state.compact ? 4 : 5;
         for(var i = 0; i < resourceOptions.length; i++){
             (function(item, idx){
                 if(item == null) return;
@@ -5158,10 +5141,10 @@ var ModEngineUI = (function(){
 
                 var iconBack = new Table();
                 iconBack.background(selected ? s.d.panelCyan : s.d.panelDark);
-                iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(clampUiSize(28)).color(tooHard ? theme.dim : contentColor(item, theme.cyan));
-                b.add(iconBack).size(clampUiSize(46));
-                assignRow.add(b).size(clampUiSize(50)).padRight(gap.xs).padTop(gap.xs);
-                if((idx + 1) % 5 === 0) assignRow.row();
+                iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(clampUiSize(24)).color(tooHard ? theme.dim : contentColor(item, theme.cyan));
+                b.add(iconBack).size(clampUiSize(36));
+                assignRow.add(b).size(clampUiSize(40)).padRight(gap.xs).padBottom(gap.xs);
+                if((idx + 1) % itemsPerRow === 0) assignRow.row();
             })(resourceOptions[i], i);
         }
 
@@ -5170,13 +5153,14 @@ var ModEngineUI = (function(){
             callHandler("command", {command: "mining:fleetClear", unitType: typeName});
             rebuildContent();
         });
-        assignRow.add(clearBtn).size(clampUiSize(50)).padTop(gap.xs);
+        assignRow.add(clearBtn).size(clampUiSize(40)).padBottom(gap.xs);
         p.add(assignRow).left().padTop(gap.md).row();
 
         var statusText = currentAssignment.length > 0
             ? ("TARGET: " + currentAssignment.map(function(n){ return n.toUpperCase(); }).join(", "))
             : "NO_ASSIGNMENT";
         p.add(label(statusText, currentAssignment.length > 0 ? s.labelCyan : s.labelDim, 0.7)).left().padTop(gap.sm);
+        try{ p.setClip(true); }catch(eClip){}
         return p;
     }
 
@@ -5249,7 +5233,7 @@ var ModEngineUI = (function(){
             head.add(pilot).growX().padTop(gap.lg).row();
         }else{
             head.add(intro).growX().left();
-            head.add(pilot).width(clampUiSize(520)).top();
+            head.add(pilot).width(clampUiSize(500)).top();
         }
         parent.add(head).growX().row();
 
@@ -5350,17 +5334,13 @@ var ModEngineUI = (function(){
         commands.add(textButton("SELF-DESTRUCT", s.danger, function(){ callHandler("command", {command: "player:selfDestruct"}); })).growX().height(clampUiSize(64)).padTop(gap.lg);
         rightCol.add(commands).growX().padTop(gap.lg);
 
-        if(state.compact){
+        var stackPlayer = state.compact || ArcCore.graphics.getWidth() < 1400;
+        if(stackPlayer){
             main.add(leftCol).growX().row();
             main.add(rightCol).growX().padTop(gap.lg);
         }else{
             main.add(leftCol).growX().padRight(gap.xl);
-            // 560 was the original rightCol width on a 1500-px design; on a
-            // 1080-px phone the same number overflows the remaining space
-            // and the dialog begins clipping the rightmost buttons. Scaling
-            // the column down to localScale() makes the whole block move
-            // together with the rest of the menu on small screens.
-            main.add(rightCol).width(clampUiSize(560)).top();
+            main.add(rightCol).width(clampUiSize(500)).top();
         }
         parent.add(main).growX().padTop(gap.xl).row();
     }
@@ -5515,9 +5495,9 @@ var ModEngineUI = (function(){
         }else{
             var fleetList = new Table();
             fleetList.top().left();
-            var fleetCols = state.compact ? 1 : (ArcCore.graphics.getWidth() > 1700 ? 2 : 1);
+            var fleetCols = state.compact || ArcCore.graphics.getWidth() < 1600 ? 1 : 2;
             for(var fi = 0; fi < liveFleet.length; fi++){
-                fleetList.add(fleetMinerCard(liveFleet[fi], resourceOptions)).growX().minWidth(state.compact ? 0 : 340).top().padRight(gap.md).padBottom(gap.md);
+                fleetList.add(fleetMinerCard(liveFleet[fi], resourceOptions)).growX().minWidth(state.compact ? 0 : clampUiSize(320)).top().padRight(gap.md).padBottom(gap.md);
                 if((fi + 1) % fleetCols === 0) fleetList.row();
             }
             var fleetPane = new ScrollPane(fleetList, getStyles().pane);
