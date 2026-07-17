@@ -21,6 +21,16 @@ var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
 var KeyCode = Packages.arc.input.KeyCode;
+// UI scale: handled LOCALLY in this mod, never via the global Scl singleton.
+// Scl.scl() in Arc is a cached per-JVM value (dp.scl is computed once on the
+// first call and never re-evaluated) so changing it at runtime has no effect
+// on Mindustry / Arc built-in dialogs. Worse, every Cell.width/.pad/.size in
+// Arc is multiplied by Scl.scl(value) at layout time, so on mobile where
+// cached dp.scl >= 1.0 the menu gets *bigger* instead of smaller. We instead
+// apply our own local scale to text and to "fixed-pixel" values where the
+// hard-coded number is too large for a small screen. The menu itself is
+// always stretched to the full screen (dialog.cont.setFillParent(true)) so
+// the layout never overlaps or drifts — only inner content adapts.
 
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
