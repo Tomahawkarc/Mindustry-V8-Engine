@@ -1819,7 +1819,7 @@ var ModEngineUI = (function(){
         }));
 
         var teamPanel = panel(s.d.panel, g(gap.lg));
-        teamPanel.add(sectionHeader("TEAM SELECTION", "ACTIVE PILOT SQUADRON", getIcon("players", "admin"))).growX().row();
+        teamPanel.add(sectionHeader("TEAM SELECTION", null, null)).growX().row();
         
         var Team = Packages.mindustry.game.Team;
         var teamOptions = [];
