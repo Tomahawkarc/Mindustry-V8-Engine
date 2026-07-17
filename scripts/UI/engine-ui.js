@@ -637,7 +637,7 @@ var ModEngineUI = (function(){
         // in the same class.
         var w = 0;
         try{ w = ArcCore.graphics.getWidth(); }catch(eW){ w = 0; }
-        var s = mindustrySclFactor();
+        var s = mindustryScl();
         if(s < 1) s = 1;
         var logicalW = w / s;
         if(state.lastScreenWidth === w && state.lastWidthClass != null) return state.lastWidthClass !== "wide";
@@ -866,7 +866,7 @@ var ModEngineUI = (function(){
         // is wider than the actual content area and causes wrap.
         var w = 1080;
         try{ w = ArcCore.graphics.getWidth(); }catch(eSize){}
-        var s = mindustrySclFactor();
+        var s = mindustryScl();
         if(s < 1) s = 1;
         var logicalW = w / s;
         if(logicalW <= 0) logicalW = 1080;
