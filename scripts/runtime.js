@@ -978,19 +978,10 @@ var ModEngineRuntime = (function(){
         var selectButton = new Button(Styles.clearNonei);
         selectButton.name = "mod-engine-selection";
         selectButton.left();
-        var selIcon = null;
-        try{ selIcon = Icon.edit; }catch(e1){ try{ selIcon = Icon.wrench; }catch(e2){ try{ selIcon = Icon.copy; }catch(e3){ try{ selIcon = Icon.command; }catch(e4){ try{ selIcon = Icon.box; }catch(e5){} } } } }
-        if(selIcon != null){
-            try{ selectButton.image(selIcon).size(22 * s).padLeft(10 * s).padRight(8 * s).color(Pal.gray); }catch(eImg){}
-        }
         var selLabel = new Packages.arc.scene.ui.Label("SELECT", Styles.outlineLabel);
         try{ selLabel.setFontScale(0.82 * s); }catch(eFs){}
         try{ selLabel.setAlignment(Packages.arc.util.Align.center); }catch(eAl){}
-        selectButton.add(selLabel).left().growX();
-        var arrowLabel = new Packages.arc.scene.ui.Label(">", Styles.outlineLabel);
-        try{ arrowLabel.setFontScale(0.82 * s); }catch(eFs2){}
-        try{ arrowLabel.setColor(Color.valueOf("a0a8b3")); }catch(eC){}
-        selectButton.add(arrowLabel).padLeft(8 * s).padRight(12 * s);
+        selectButton.add(selLabel).center().growX().padLeft(12 * s).padRight(12 * s);
         selectButton.clicked(run(function(){
             if(ui != null && ui.state != null){
                 beginBuildSelection();
@@ -998,14 +989,11 @@ var ModEngineRuntime = (function(){
         }));
         selectButton.update(run(function(){
             try{
-                var active = ui != null && ui.state != null && ui.state.buildSelectionActive;
+                var active = (ui != null && ui.state != null && (ui.state.buildSelectionActive || (selectedBuilds != null && selectedBuilds.length > 0)));
                 selLabel.setColor(active ? Pal.accent : Color.white);
             }catch(eU){}
         }));
-        holder.add(selectButton).width(176 * s).height(48 * s).tooltip("Select structures: " + String(ui.state.buildSelectionFilter || "all"));
-        holder.image().color(Pal.gray).width(4 * s).fillY();
-        holder.row();
-        holder.image().color(Pal.gray).height(4 * s).fillX().colspan(2);
+        holder.add(selectButton).width(132 * s).height(44 * s).tooltip("Select structures: " + String(ui.state.buildSelectionFilter || "all"));
         holder.pack();
         quickHudRoot.addChild(holder);
         quickHudButton = selectButton;
@@ -1015,7 +1003,7 @@ var ModEngineRuntime = (function(){
         quickHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
-                try{ selectButton.setChecked(ui.state.buildSelectionActive === true); }catch(eChecked){}
+                try{ selectButton.setChecked(ui.state.buildSelectionActive === true || (selectedBuilds != null && selectedBuilds.length > 0)); }catch(eChecked){}
                 quickHudRoot.visible = true;
                 if(enabled !== quickHudShown){
                     quickHudShown = enabled;
@@ -1870,6 +1858,7 @@ var ModEngineRuntime = (function(){
     function beginBuildSelection(){
         if(ui == null || ui.state == null) return;
         if(ui.state.buildSelectionActive){ cancelBuildSelection(); return; }
+        if(selectedBuilds != null && selectedBuilds.length > 0){ cancelBuildSelection(); return; }
         ui.state.buildSelectionActive = true;
         ui.state.buildSelectionDragging = false;
         buildSelectionDragging = false;
