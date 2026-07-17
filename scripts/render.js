@@ -20,7 +20,7 @@ var Log = Packages.arc.util.Log;
 
 var rangeBatch = false;
 var rangePreviousZ = 0;
-// This pass owns its framebuffer and never touches Renderer.effectBuffer.
+
 var rangeLayer = Layer.overlayUI - 2.5;
 var rangeShader = null;
 var rangeBuffer = null;
@@ -30,29 +30,7 @@ var rangeUseFbo = true;
 var rangeResourcesChecked = false;
 var rangeCaptureStarted = false;
 
-/* =============================================================================
- * Root cause of the broken force shields: Draw.drawRange() runnables are z-tagged
- * queue entries that execute MID-FLUSH of the sorted sprite batch (Arc Draw.java:
- *   drawRange(z, range, begin, end) => draw(z - range, begin); draw(z + range, end)
- * Mindustry Renderer registers shield/buildBeam captures with ZERO flushes:
- *   Draw.drawRange(Layer.shields, 1f, () -> effectBuffer.begin(Color.clear), () -> {
- *       effectBuffer.end(); effectBuffer.blit(Shaders.shield); });
- * because the sorter itself flushes lower-z sprites before each runnable.
- *
- * The old begin/end callbacks called Draw.flush(), Draw.shader(), Draw.blend(),
- * Draw.reset() — every one of those flushes Core.batch. Flushing the batch from
- * inside its own sorted flush is re-entrant: the remaining queue entries (the
- * game's shield runnables at z 124/126, buildBeam at 121/123) are lost or
- * shuffled, shield polygons never reach effectBuffer and render raw to screen,
- * which looks like "shields turned into solid filled blobs".
- *
- * Fix 1.6.2: restored selectionRect() and selectedBuild() exports (recovered
- * verbatim from commit 3690c20 via the jsDelivr minified build). They were lost
- * when this file was rewritten for the shield fix — runtime's draw hook calls
- * ModEngineRender.selectionRect(...) every frame while dragging, and the silent
- * Rhino TypeError made the green build-selection rectangle disappear entirely.
- * Also restored the original targetMarker secondary dot: Fill.circle(x, y, 2.8).
- * ============================================================================= */
+
 
 function setDrawColor(src, alpha){
     var c = src == null ? Color.white : src;
@@ -74,14 +52,14 @@ function ensureRangeResources(){
             return false;
         }
 
-        // Compile from source strings. This path cannot accidentally resolve to an atlas
-        // error/nomap region, which is possible when image helpers are used for a shader file.
+        
+        
         rangeShader = new Shader(vert.readString(), frag.readString());
         rangeBuffer = new FrameBuffer();
 
-        // Never use Fill.circle() for the FBO mask: it resolves the atlas "circle"
-        // region and may return the nomap/error sprite in modded atlas configurations.
-        // This private texture is generated once and cannot resolve to any atlas icon.
+        
+        
+        
         var maskPixmap = new Pixmap(128, 128);
         maskPixmap.fillCircle(64, 64, 63, Color.whiteRgba);
         rangeMaskTexture = new Texture(maskPixmap);
@@ -102,11 +80,11 @@ function ensureRangeResources(){
     }
 }
 
-// GL-only state repair. Safe inside sorted-flush runnables: it never calls
-// Draw.flush()/Draw.shader()/Draw.blend()/Draw.reset(), so Core.batch is untouched.
-// The ScreenQuad blit leaves the range texture and our shader bound; subsequent
-// queued sprites (overlayUI 120, buildBeam 121-123, shields 124-126, weather 130)
-// would sample them because SpriteBatch caches its texture/program lazily.
+
+
+
+
+
 function restoreGlState(){
     try{
         var white = Core.atlas.white();
@@ -137,7 +115,7 @@ function beginRanges(){
     if(ensureRangeResources()){
         try{
             Draw.drawRange(rangeLayer, 0.5, function(){
-                // begin runnable — runs mid sorted flush. GL ONLY, no Draw.flush()!
+                
                 try{
                     rangeBuffer.resize(Core.graphics.getWidth(), Core.graphics.getHeight());
                     rangeBuffer.begin(Color.clear);
@@ -146,7 +124,7 @@ function beginRanges(){
                     disableFboAfterFailure(eBegin);
                 }
             }, function(){
-                // end runnable — runs mid sorted flush. GL ONLY, no Draw.flush()!
+                
                 if(!rangeCaptureStarted || !rangeUseFbo) return;
                 try{
                     rangeBuffer.end();
@@ -163,10 +141,10 @@ function beginRanges(){
                     rangeShader.setUniformf("u_invsize", 1 / Core.camera.width, 1 / Core.camera.height);
                     try{ rangeShader.setUniformf("u_dp", Scl.scl(1)); }catch(eDp){ rangeShader.setUniformf("u_dp", 1); }
                     rangeShader.setUniformf("u_alpha", 1.0);
-                    // FrameBuffer.blit = Draw.blit: binds texture unit 0, binds shader,
-                    // renders the ScreenQuad directly. Does not use the sprite batch.
+                    
+                    
                     rangeBuffer.blit(rangeShader);
-                    // Undo the blit's GL leftovers without disturbing the batch queue.
+                    
                     restoreGlState();
                 }catch(eBlit){
                     disableFboAfterFailure(eBlit);
@@ -218,58 +196,58 @@ function rangeCircle(x, y, radius, color, alpha, phase){
 
 function targetMarker(x, y, primary, secondary){
     withOverlay(function(){
-        // Small cursor-sized marker: pulse oscillates around ~4 tiles (≈ cursor size)
+        
         var pulse = 3.6 + Mathf.absin(Time.time, 5, 0.8);
-        // Soft glow halo
+        
         setDrawColor(primary, 0.16);
         Fill.circle(x, y, pulse + 3);
-        // Dashed ring
+        
         setDrawColor(primary, 0.85);
         Drawf.dashCircle(x, y, pulse + 1.4, primary);
-        // Sharp circle
+        
         Draw.color(primary);
         Lines.stroke(1.2);
         Lines.circle(x, y, pulse);
-        // Small crosshair ticks
+        
         Lines.stroke(1.1);
         Lines.line(x - pulse - 3, y, x - 1.4, y);
         Lines.line(x + 1.4, y, x + pulse + 3, y);
         Lines.line(x, y - pulse - 3, x, y - 1.4);
         Lines.line(x, y + 1.4, x, y + pulse + 3);
-        // Inner bright core dot
+        
         Draw.color(secondary);
         Fill.circle(x, y, 1.3);
         Draw.reset();
     });
 }
 
-// Beautiful small red spawn marker for unit spawn position
+
 function spawnMarker(x, y){
     withOverlay(function(){
-        // Cursor-sized red marker: pulse oscillates around ~3.5 tiles
+        
         var pulse = 3.0 + Mathf.absin(Time.time, 4.5, 0.9);
         var red = Color.valueOf("ff3355");
         var redDark = Color.valueOf("b81f38");
 
-        // Outer soft glow
+        
         setDrawColor(red, 0.22);
         Fill.circle(x, y, pulse + 3.5);
 
-        // Dashed outer ring (beautiful)
+        
         Draw.color(red);
         Lines.stroke(1.1);
         Drawf.dashCircle(x, y, pulse + 2.0, red);
 
-        // Main sharp circle
+        
         Draw.color(red);
         Lines.stroke(1.5);
         Lines.circle(x, y, pulse + 0.4);
 
-        // Inner filled small circle
+        
         setDrawColor(red, 0.95);
         Fill.circle(x, y, 1.7);
 
-        // Tiny crosshair lines (very small elegant)
+        
         Draw.color(redDark);
         Lines.stroke(1.2);
         var arm = 3.5;
@@ -278,7 +256,7 @@ function spawnMarker(x, y){
         Lines.line(x, y - arm, x, y - 1.1);
         Lines.line(x, y + 1.1, x, y + arm);
 
-        // Tiny bright core
+        
         Draw.color(Color.white);
         Fill.circle(x, y, 0.65);
 
@@ -286,8 +264,8 @@ function spawnMarker(x, y){
     });
 }
 
-// Drag-selection overlay (world coords). Runtime calls this every frame while
-// state.buildSelectionActive && state.buildSelectionDragging.
+
+
 function selectionRect(x1, y1, x2, y2, color){
     withOverlay(function(){
         var rx = Math.min(x1, x2);
@@ -303,7 +281,7 @@ function selectionRect(x1, y1, x2, y2, color){
     });
 }
 
-// Per-tile marker for structures already in the selection set.
+
 function selectedBuild(tile, color){
     if(tile == null) return;
     withOverlay(function(){
