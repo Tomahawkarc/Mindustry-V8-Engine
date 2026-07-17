@@ -1850,6 +1850,14 @@ var ModEngineRuntime = (function(){
         ui.state.buildSelectionDragging = false;
         buildSelectionDragging = false;
         selectedBuilds = [];
+
+        /* clear Mindustry native selection/plans to ensure nothing remains selected */
+        try {
+            if (Vars.control && Vars.control.input && Vars.control.input.selectPlans) {
+                Vars.control.input.selectPlans.clear();
+            }
+        } catch(e) {}
+
         try{ if(buildSelectionInputLayer != null) buildSelectionInputLayer.remove(); }catch(eRemove){}
         buildSelectionInputLayer = null;
         notify("SELECTION MODE CLOSED");
@@ -1857,8 +1865,12 @@ var ModEngineRuntime = (function(){
 
     function beginBuildSelection(){
         if(ui == null || ui.state == null) return;
-        if(ui.state.buildSelectionActive){ cancelBuildSelection(); return; }
-        if(selectedBuilds != null && selectedBuilds.length > 0){ cancelBuildSelection(); return; }
+        
+        if(ui.state.buildSelectionActive || (selectedBuilds && selectedBuilds.length > 0)){
+            cancelBuildSelection();
+            return;
+        }
+
         ui.state.buildSelectionActive = true;
         ui.state.buildSelectionDragging = false;
         buildSelectionDragging = false;
