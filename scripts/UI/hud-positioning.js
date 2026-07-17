@@ -1,9 +1,4 @@
-/**
- * HUD Positioning — direct port of the WORKING logic from the attached runtime.js
- * + minimal lag fixes (caching + throttling).
- * The core functions (collectHudObstacles + hudStackBottom) are taken almost verbatim
- * from the version the user said "works absolutely".
- */
+
 
 (function(){
     var Core = Packages.arc.Core;
@@ -18,12 +13,12 @@
 
     var _cache = {};
     var _lastFrame = 0;
-    var CACHE_TTL = 3; // very short TTL so expandable HUDs (arrow-down) are detected quickly
+    var CACHE_TTL = 3; 
 
-    // Track last seen sizes of obstacles so we can react when they expand/collapse
-    var _lastSizes = {}; // key -> {w, h}
-    var _needsRecompute = false;   // set when we saw any obstacle change size (arrow click etc)
-    var _forceFresh = false;       // explicit full refresh request
+    
+    var _lastSizes = {}; 
+    var _needsRecompute = false;   
+    var _forceFresh = false;       
 
     function clearCache(){
         _cache = {};
@@ -41,12 +36,12 @@
     }
 
     function getObsKey(p){
-        // position-only key (top-left) for live size tracking of expandable HUDs
-        // size is stored in value; this way expand/collapse (different h at same x,y) is detected reliably
+        
+        
         return ((p.x|0) + "|" + (p.y|0));
     }
 
-    // ====================== EXACT WORKING LOGIC ======================
+    
     function belongsToModEngineHud(element){
         try{
             var current = element;
@@ -73,7 +68,7 @@
     function collectHudObstacles(element, anchor, x, width, out, depth){
         if(element == null || out.length > 64) return;
         if(depth === undefined) depth = 0;
-        if(depth > 6) return;                    // slightly higher for expandable HUDs
+        if(depth > 6) return;                    
 
         if(belongsToModEngineHud(element)) return;
 
@@ -100,7 +95,7 @@
                 var last = _lastSizes[obsKey];
                 var sizeChanged = !last || last.w !== (ew|0) || last.h !== (eh|0);
                 if(sizeChanged){
-                    // another mod expanded (or collapsed) its HUD (e.g. arrow button) → force recompute
+                    
                     _cache = {};
                     _lastFrame = 0;
                     _needsRecompute = true;
@@ -119,7 +114,7 @@
         try{
             if(element instanceof Group){
                 var children = element.getChildren();
-                var lim = Math.min(children.size, 90); // a bit more for dynamic children
+                var lim = Math.min(children.size, 90); 
                 for(var i = 0; i < lim; i++){
                     collectHudObstacles(children.items[i], anchor, x, width, out, depth + 1);
                 }
@@ -127,9 +122,7 @@
         }catch(e){}
     }
 
-    /**
-     * This is the function that actually worked for the user.
-     */
+    
     function hudStackBottom(anchor, anchorBottom, x, width, hudHeight){
         if(anchor == null || Vars.ui == null || Vars.ui.hudGroup == null) return anchorBottom || 0;
 
@@ -162,7 +155,7 @@
         _cache[key] = boundary;
         _lastFrame = frame;
 
-        // clear the one-time force flags after use
+        
         if(force){
             _forceFresh = false;
             _needsRecompute = false;
@@ -194,7 +187,7 @@
 
         if(this.stable < 5) return true;
         if(this.stable < 30) return (this.total % 5 === 0);
-        return (this.total % 36 === 0); // very low when stable
+        return (this.total % 36 === 0); 
     };
     PositionController.prototype.forceNext = function(){ this.force = true; this.stable = 0; };
     PositionController.prototype.reset = function(){
@@ -214,7 +207,7 @@
                 var p = obtainVec();
                 p.set(0, 0);
                 anchor.localToStageCoordinates(p);
-                // Force fresh scan so expandable HUDs (arrow-down) are respected
+                
                 if(_needsRecompute || _forceFresh) {
                     _cache = {};
                     _lastFrame = 0;
@@ -250,10 +243,10 @@
 
         resetCache: clearCache,
         forceRefresh: function(){
-            // set flags for immediate full recompute + live size tracking
+            
             _needsRecompute = true;
             _forceFresh = true;
-            // invalidate position cache but KEEP _lastSizes so expansion detection works across calls
+            
             _cache = {};
             _lastFrame = 0;
         },
