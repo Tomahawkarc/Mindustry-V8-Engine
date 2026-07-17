@@ -6062,6 +6062,12 @@ var ModEngineUI = (function(){
         showBuildSelection: function(builds){
             showBuildSelectionDialog(builds);
         },
+        hideBuildSelection: function(){
+            if(buildSelectionDialog != null){
+                try{ buildSelectionDialog.hide(); }catch(e){}
+                buildSelectionDialog = null;
+            }
+        },
         showQuickItems: function(){
             showQuickItemsDialog();
         },
