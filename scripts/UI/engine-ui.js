@@ -18,8 +18,70 @@ var TextButton = Packages.arc.scene.ui.TextButton;
 var ImageButton = Packages.arc.scene.ui.ImageButton;
 var Label = Packages.arc.scene.ui.Label;
 var TextField = Packages.arc.scene.ui.TextField;
-var ScrollPane = Packages.arc.scene.ui.ScrollPane;
+var RealScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
+
+function findParentScrollPane(actor) {
+    if (actor == null) return null;
+    var p = actor.parent;
+    while (p != null) {
+        if (p instanceof RealScrollPane) {
+            return p;
+        }
+        p = p.parent;
+    }
+    return null;
+}
+
+function setupScrollFocus(pane) {
+    pane.addListener(extend(InputListener, {
+        enter: function(event, x, y, pointer, fromActor) {
+            if (pointer < 0) { // hover enter
+                try {
+                    ArcCore.scene.setScrollFocus(pane);
+                } catch(e) {}
+            }
+        },
+        exit: function(event, x, y, pointer, toActor) {
+            if (pointer < 0) { // hover exit
+                var isStillInside = false;
+                if (toActor != null) {
+                    var curr = toActor;
+                    while (curr != null) {
+                        if (curr === pane) {
+                            isStillInside = true;
+                            break;
+                        }
+                        curr = curr.parent;
+                    }
+                }
+                if (!isStillInside) {
+                    var parentPane = findParentScrollPane(pane);
+                    try {
+                        if (parentPane != null) {
+                            ArcCore.scene.setScrollFocus(parentPane);
+                        } else {
+                            if (ArcCore.scene.getScrollFocus() === pane) {
+                                ArcCore.scene.setScrollFocus(null);
+                            }
+                        }
+                    } catch(e) {}
+                }
+            }
+        }
+    }));
+}
+
+function ScrollPane(actor, style) {
+    var pane;
+    if (style !== undefined) {
+        pane = new RealScrollPane(actor, style);
+    } else {
+        pane = new RealScrollPane(actor);
+    }
+    setupScrollFocus(pane);
+    return pane;
+}
 var KeyCode = Packages.arc.input.KeyCode;
 
 var Vars = Packages.mindustry.Vars;
