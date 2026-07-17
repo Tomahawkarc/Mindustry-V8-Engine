@@ -62,6 +62,34 @@ function setupScrollFocus(pane) {
                             ArcCore.scene.setScrollFocus(parentPane);
                         } else {
                             if (ArcCore.scene.getScrollFocus() === pane) {
+    pane.addListener(extend(InputListener, {
+        enter: function(event, x, y, pointer, fromActor) {
+            if (pointer < 0) { 
+                try {
+                    ArcCore.scene.setScrollFocus(pane);
+                } catch(e) {}
+            }
+        },
+        exit: function(event, x, y, pointer, toActor) {
+            if (pointer < 0) { 
+                var isStillInside = false;
+                if (toActor != null) {
+                    var curr = toActor;
+                    while (curr != null) {
+                        if (curr === pane) {
+                            isStillInside = true;
+                            break;
+                        }
+                        curr = curr.parent;
+                    }
+                }
+                if (!isStillInside) {
+                    var parentPane = findParentScrollPane(pane);
+                    try {
+                        if (parentPane != null) {
+                            ArcCore.scene.setScrollFocus(parentPane);
+                        } else {
+                            if (ArcCore.scene.getScrollFocus() === pane) {
                                 ArcCore.scene.setScrollFocus(null);
                             }
                         }
