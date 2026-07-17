@@ -974,45 +974,48 @@ var ModEngineRuntime = (function(){
         holder.name = "mod-engine-selection-extension";
         holder.background(Styles.black6);
         holder.top().left();
-        var nativeCommandStyle = null;
-        try{ if(quickHudAnchor != null && quickHudAnchor.getStyle != null) nativeCommandStyle = quickHudAnchor.getStyle(); }catch(eNativeStyle){}
-        try{
-            if(nativeCommandStyle == null && quickHudAnchor != null){
-                var anchorParent = quickHudAnchor.parent;
-                if(anchorParent != null && anchorParent.parent != null){
-                    var gp = anchorParent.parent;
-                    if(gp.background != null){
-                        holder.background(gp.background);
-                    }
-                }
-            }
-        }catch(eBg){}
-        quickHudButton = nativeCommandStyle != null ? new TextButton("SELECT", nativeCommandStyle) : new TextButton("SELECT", Styles.defaultt);
-        quickHudButton.name = "mod-engine-selection";
-        quickHudButton.left();
-        quickHudButton.clicked(run(function(){
+        var s = hudScale();
+        var selectButton = new Button(Styles.clearNonei);
+        selectButton.name = "mod-engine-selection";
+        selectButton.left();
+        var selIcon = null;
+        try{ selIcon = Icon.edit; }catch(e1){ try{ selIcon = Icon.wrench; }catch(e2){ try{ selIcon = Icon.copy; }catch(e3){ try{ selIcon = Icon.command; }catch(e4){ try{ selIcon = Icon.box; }catch(e5){} } } } }
+        if(selIcon != null){
+            try{ selectButton.image(selIcon).size(22 * s).padLeft(10 * s).padRight(8 * s).color(Pal.gray); }catch(eImg){}
+        }
+        var selLabel = new Packages.arc.scene.ui.Label("SELECT", Styles.outlineLabel);
+        try{ selLabel.setFontScale(0.82 * s); }catch(eFs){}
+        try{ selLabel.setAlignment(Packages.arc.util.Align.center); }catch(eAl){}
+        selectButton.add(selLabel).left().growX();
+        var arrowLabel = new Packages.arc.scene.ui.Label(">", Styles.outlineLabel);
+        try{ arrowLabel.setFontScale(0.82 * s); }catch(eFs2){}
+        try{ arrowLabel.setColor(Color.valueOf("a0a8b3")); }catch(eC){}
+        selectButton.add(arrowLabel).padLeft(8 * s).padRight(12 * s);
+        selectButton.clicked(run(function(){
             if(ui != null && ui.state != null){
                 beginBuildSelection();
             }
         }));
-        var s = hudScale();
-        try{
-            var ql = quickHudButton.getLabel != null ? quickHudButton.getLabel() : null;
-            if(ql != null) ql.setFontScale(0.85 * s);
-        }catch(eLabel){}
-        holder.add(quickHudButton).size(165 * s, 52 * s).tooltip("Select structures: " + String(ui.state.buildSelectionFilter || "all"));
+        selectButton.update(run(function(){
+            try{
+                var active = ui != null && ui.state != null && ui.state.buildSelectionActive;
+                selLabel.setColor(active ? Pal.accent : Color.white);
+            }catch(eU){}
+        }));
+        holder.add(selectButton).width(176 * s).height(48 * s).tooltip("Select structures: " + String(ui.state.buildSelectionFilter || "all"));
         holder.image().color(Pal.gray).width(4 * s).fillY();
         holder.row();
         holder.image().color(Pal.gray).height(4 * s).fillX().colspan(2);
         holder.pack();
         quickHudRoot.addChild(holder);
+        quickHudButton = selectButton;
         var quickHudShown = null;
         var quickHudPosTimer = 0;
         var selectionPos = new Vec2();
         quickHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
-                try{ quickHudButton.setChecked(ui.state.buildSelectionActive === true); }catch(eChecked){}
+                try{ selectButton.setChecked(ui.state.buildSelectionActive === true); }catch(eChecked){}
                 quickHudRoot.visible = true;
                 if(enabled !== quickHudShown){
                     quickHudShown = enabled;
@@ -1033,17 +1036,10 @@ var ModEngineRuntime = (function(){
                     if((quickHudPosTimer % 4) === 0){
                         HudPositioning.forceRefresh();
                     }
-                    if(isMobilePlatform){
-                        holder.setPosition(
-                            selectionPos.x + quickHudAnchor.getWidth(),
-                            selectionPos.y + quickHudAnchor.getHeight() - holder.getHeight()
-                        );
-                    }else{
-                        holder.setPosition(
-                            selectionPos.x,
-                            selectionPos.y + quickHudAnchor.getHeight() - holder.getHeight()
-                        );
-                    }
+                    holder.setPosition(
+                        selectionPos.x + quickHudAnchor.getWidth(),
+                        selectionPos.y + quickHudAnchor.getHeight() - holder.getHeight()
+                    );
                     holder.visible = enabled && quickHudAnchor.visible;
                 }else{
                     holder.setPosition(163 + Core.scene.marginLeft, 8 + Core.scene.marginBottom);
