@@ -21,16 +21,6 @@ var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
 var KeyCode = Packages.arc.input.KeyCode;
-// UI scale: handled LOCALLY in this mod, never via the global Scl singleton.
-// Scl.scl() in Arc is a cached per-JVM value (dp.scl is computed once on the
-// first call and never re-evaluated) so changing it at runtime has no effect
-// on Mindustry / Arc built-in dialogs. Worse, every Cell.width/.pad/.size in
-// Arc is multiplied by Scl.scl(value) at layout time, so on mobile where
-// cached dp.scl >= 1.0 the menu gets *bigger* instead of smaller. We instead
-// apply our own local scale to text and to "fixed-pixel" values where the
-// hard-coded number is too large for a small screen. The menu itself is
-// always stretched to the full screen (dialog.cont.setFillParent(true)) so
-// the layout never overlaps or drifts — only inner content adapts.
 
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
@@ -206,6 +196,8 @@ var ModEngineUI = (function(){
         lastWidthClass: "wide",
         lastScreenWidth: 0
     };
+
+    try{ loadUiScale(); }catch(eInitScale){}
 
     var handlers = {};
     var dialog = null;
@@ -683,19 +675,36 @@ var ModEngineUI = (function(){
 
     function loadUiScale(){
         try{
-            var saved = ArcCore.settings.getFloat(uiScaleSettingsKey(), 1.0);
-            if(isNaN(saved)) saved = 1.0;
-            state.uiScale = Math.max(0.30, Math.min(1.0, saved));
+            var key = uiScaleSettingsKey();
+            var raw = null;
+            try{ raw = ArcCore.settings.getString(key, null); }catch(e1){}
+            if(raw == null){
+                try{ raw = String(ArcCore.settings.getFloat(key, 1.0)); }catch(e2){}
+            }
+            if(raw != null){
+                var parsed = parseFloat(String(raw));
+                if(!isNaN(parsed) && parsed >= 0.10 && parsed <= 3.0){
+                    state.uiScale = Math.max(0.30, Math.min(1.0, parsed));
+                    return;
+                }
+            }
         }catch(e){
-            state.uiScale = 1.0;
+            Log.err("Failed to load persisted UI scale", e);
         }
+        state.uiScale = 1.0;
     }
 
     function saveUiScale(){
         try{
-            ArcCore.settings.put(uiScaleSettingsKey(), state.uiScale);
+            var val = state.uiScale;
+            if(val == null || isNaN(val)) val = 1.0;
+            var valStr = String(val);
+            ArcCore.settings.put(uiScaleSettingsKey(), valStr);
+            try{ ArcCore.settings.putFloat(uiScaleSettingsKey(), Number(val)); }catch(eFloat){}
             ArcCore.settings.forceSave();
-        }catch(eSave){}
+        }catch(eSave){
+            Log.err("Failed to save UI scale", eSave);
+        }
     }
 
     // Mindustry/Arc reports a logical density factor via Core.graphics.getDensity():
@@ -1619,12 +1628,12 @@ var ModEngineUI = (function(){
         left.left().top();
         left.add(label("MOD ENGINE", s.labelGold, 1.75)).left().row();
         left.add(label("ENGINE OPERATIONAL", s.label, 1.42)).left().padTop(g(gap.sm)).row();
-        left.add(wrappedLabel("Core interface initialized. Planetary defense protocols and mod injection systems are running at nominal capacity.", s.labelMuted, 0.92)).width(textBlockWidth(760)).left().padTop(g(gap.md)).row();
+        left.add(wrappedLabel("Core interface initialized. Planetary defense protocols and mod injection systems are running at nominal capacity.", s.labelMuted, 0.92)).growX().left().padTop(g(gap.md)).row();
 
         var status = new Table();
         status.left();
         var threat = threatLevelInfo();
-        status.add(statusPair("SECTOR", currentSectorLabel(), s.labelCyan)).width(state.compact ? textBlockWidth(320) : 320).height(clampUiSize(96)).padRight(g(gap.md));
+        status.add(statusPair("SECTOR", currentSectorLabel(), s.labelCyan)).growX().height(clampUiSize(96)).padRight(g(gap.md));
         status.add(statusPair("THREAT_LEVEL", threat.text, threat.style)).growX().minWidth(clampUiSize(200)).height(clampUiSize(96));
         left.add(status).growX().left().padTop(g(gap.lg));
 
@@ -2501,7 +2510,7 @@ var ModEngineUI = (function(){
         var copy = new Table();
         copy.left();
         copy.add(label(title, style || s.labelGold, 0.9)).left().row();
-        copy.add(wrappedLabel(caption, s.labelMuted, 0.7)).width(state.compact ? textBlockWidth(260) : 250).left().padTop(g(gap.sm));
+        copy.add(wrappedLabel(caption, s.labelMuted, 0.7)).growX().left().padTop(g(gap.sm));
         body.add(copy).growX().left();
         button.add(body).grow().pad(g(gap.lg));
         return button;
@@ -2521,7 +2530,7 @@ var ModEngineUI = (function(){
         var intro = new Table();
         intro.left().top();
         intro.add(label("WORLD CONTROL", s.labelCyan, 1.72)).left().row();
-        intro.add(wrappedLabel("Environmental calibration, visibility control and sector ownership in one operational surface.", s.labelMuted, 0.9)).width(textBlockWidth(820)).left().padTop(g(gap.md));
+        intro.add(wrappedLabel("Environmental calibration, visibility control and sector ownership in one operational surface.", s.labelMuted, 0.9)).growX().left().padTop(g(gap.md));
         parent.add(intro).growX().row();
 
         var environment = panel(s.d.panelStrong, g(gap.xl));
@@ -2605,7 +2614,7 @@ var ModEngineUI = (function(){
         var s = getStyles();
         var p = panel(s.d.panelCyan, g(gap.xl));
         p.add(sectionHeader("LINK ROUTER", "NET_SYNC_CHANNELS", getIcon("link", "logic"))).growX().row();
-        p.add(wrappedLabel("Coordinate cross-screen handlers and external command bridges. These controls only call listeners and do not mutate gameplay by themselves.", s.labelMuted, 0.88)).width(textBlockWidth(720)).left().padTop(g(gap.md)).row();
+        p.add(wrappedLabel("Coordinate cross-screen handlers and external command bridges. These controls only call listeners and do not mutate gameplay by themselves.", s.labelMuted, 0.88)).growX().left().padTop(g(gap.md)).row();
 
         var rows = new Table();
         rows.left();
@@ -2718,7 +2727,7 @@ var ModEngineUI = (function(){
 
         var body = panel(s.d.panelStrong, g(gap.xl));
         body.add(sectionHeader("QUICK ITEM INJECTOR", "CORE STORAGE", getIcon("box", "database"))).growX().row();
-        body.add(wrappedLabel("Select one or more resources, set the amount added per resource, then inject the batch into your main core.", s.labelMuted, 0.82)).width(textBlockWidth(720)).left().padTop(g(gap.md)).row();
+        body.add(wrappedLabel("Select one or more resources, set the amount added per resource, then inject the batch into your main core.", s.labelMuted, 0.82)).growX().left().padTop(g(gap.md)).row();
 
         var items = [];
         eachSeq(Vars.content.items(), function(item){
@@ -2875,7 +2884,7 @@ var ModEngineUI = (function(){
         var title = new Table();
         title.left();
         title.add(label("Item Injector", s.label, 1.65)).left().row();
-        title.add(wrappedLabel("PROTOCOL: MASS RESOURCE ALLOCATION TO MAIN ENGINE CORE.", s.labelMuted, 0.86)).left().width(textBlockWidth(620)).padTop(g(gap.sm));
+        title.add(wrappedLabel("PROTOCOL: MASS RESOURCE ALLOCATION TO MAIN ENGINE CORE.", s.labelMuted, 0.86)).growX().left().padTop(g(gap.sm));
         head.add(title).growX().left();
         if(!state.compact){
             head.add(buildAmountControl()).right().top().padLeft(g(gap.lg));
@@ -3973,7 +3982,7 @@ var ModEngineUI = (function(){
         var s = getStyles();
         var p = panel(s.d.panelStrong, g(gap.xl));
         p.add(label("UNIT ACTION PANEL", s.labelGold, 1.18)).left().row();
-        p.add(wrappedLabel("Select any unit from the inspector list to open contextual actions: teleport, clone, change team, or destroy.", s.labelMuted, 0.9)).width(textBlockWidth(420)).left().padTop(g(gap.md)).row();
+        p.add(wrappedLabel("Select any unit from the inspector list to open contextual actions: teleport, clone, change team, or destroy.", s.labelMuted, 0.9)).growX().left().padTop(g(gap.md)).row();
         p.add(label("AWAITING_SELECTION", s.labelCyan, 1.08)).left().padTop(g(gap.xl));
         return p;
     }
@@ -4033,7 +4042,7 @@ var ModEngineUI = (function(){
         var allItems = moddedContent(Vars.content.items(), "all");
         var allUnits = moddedContent(Vars.content.units(), "all");
         registry.add(sectionHeader("MOD CONTENT REGISTRY", "ITEMS: " + allItems.length + "  /  UNITS: " + allUnits.length, getIcon("database", "list"))).growX().row();
-        registry.add(wrappedLabel("Content names are read directly from Content.minfo.mod and remain fully qualified, including prefixes such as new-horizon-zeta.", s.labelMuted, 0.78)).width(textBlockWidth(880)).left().padTop(g(gap.md)).row();
+        registry.add(wrappedLabel("Content names are read directly from Content.minfo.mod and remain fully qualified, including prefixes such as new-horizon-zeta.", s.labelMuted, 0.78)).growX().left().padTop(g(gap.md)).row();
 
         var kindControls = new Table();
         kindControls.left();
@@ -4347,7 +4356,7 @@ var ModEngineUI = (function(){
         top.add(label(name, s.labelCyan, 0.92)).left().growX();
         top.add(label(scope, s.labelDim, 0.68)).right();
         p.add(top).growX().row();
-        p.add(wrappedLabel(description, s.labelMuted, 0.76)).width(state.compact ? textBlockWidth(420) : 280).left().padTop(g(gap.md)).row();
+        p.add(wrappedLabel(description, s.labelMuted, 0.76)).growX().left().padTop(g(gap.md)).row();
         p.add(textButton("OPEN_ALIAS", s.action, function(){
             callHandler("command", {command: command});
         })).height(clampUiSize(40)).minWidth(clampUiSize(140)).padTop(g(gap.md)).left();
@@ -4371,7 +4380,7 @@ var ModEngineUI = (function(){
         var body = panel(s.d.panelStrong, g(gap.xl));
         body.add(sectionHeader("PRESS A KEY", "REMAP", getIcon("keyboard", "settings"))).growX().row();
         body.add(label(String(title).toUpperCase(), s.labelGold, 1.0)).left().padTop(g(gap.lg)).row();
-        body.add(wrappedLabel("The next keyboard key becomes the new bind. Press ESC to remove this bind.", s.labelMuted, 0.82)).width(textBlockWidth(520)).left().padTop(g(gap.md)).row();
+        body.add(wrappedLabel("The next keyboard key becomes the new bind. Press ESC to remove this bind.", s.labelMuted, 0.82)).growX().left().padTop(g(gap.md)).row();
         body.add(label("LISTENING...", s.labelCyan, 1.18)).center().padTop(g(gap.xl));
         d.cont.add(body).width(Math.min(620, Math.max(420, ArcCore.graphics.getWidth() - 100)));
 
@@ -4480,7 +4489,7 @@ var ModEngineUI = (function(){
 
         var body = panel(s.d.panelStrong, g(gap.xl));
         body.add(sectionHeader("SELECT STRUCTURE TYPE", "AREA FILTER", getIcon("edit", "wrench"))).growX().row();
-        body.add(wrappedLabel("Choose which structures the next green selection rectangle should capture.", s.labelMuted, 0.82)).width(state.compact ? textBlockWidth(420) : 620).left().padTop(g(gap.md)).row();
+        body.add(wrappedLabel("Choose which structures the next green selection rectangle should capture.", s.labelMuted, 0.82)).growX().left().padTop(g(gap.md)).row();
         var filters = [
             ["ALL STRUCTURES", "all", "Every building and wall in the selected area."],
             ["CONVEYORS", "conveyors", "Conveyors, ducts, routers and junctions."],
@@ -4503,7 +4512,7 @@ var ModEngineUI = (function(){
                 var copy = new Table();
                 copy.left();
                 copy.add(label(entry[0], active ? s.labelPrimary : s.label, 0.84)).left().row();
-                copy.add(wrappedLabel(entry[2], s.labelMuted, 0.66)).width(state.compact ? textBlockWidth(360) : 270).left().padTop(g(gap.sm));
+                copy.add(wrappedLabel(entry[2], s.labelMuted, 0.66)).growX().left().padTop(g(gap.sm));
                 button.add(copy).grow().pad(g(gap.md));
                 button.clicked(run(function(){
                     state.buildSelectionFilter = entry[1];
@@ -4538,9 +4547,9 @@ var ModEngineUI = (function(){
 
         var left = new Table();
         left.left().top();
-        left.add(label("CONSTRUCTION", s.labelCyan, 1.78)).left().row();
-        left.add(label("PROTOCOLS", s.labelCyan, 1.78)).left().padTop(g(gap.xs)).row();
-        left.add(wrappedLabel("Planetary defense structures are running at 100% efficiency. Manual override active for logistical restructuring and mass structural repair.", s.labelMuted, 0.96)).width(textBlockWidth(760)).left().padTop(g(gap.lg));
+        left.add(label("CONSTRUCTION", s.labelCyan, 1.78)).left().growX().row();
+        left.add(label("PROTOCOLS", s.labelCyan, 1.78)).left().growX().padTop(g(gap.xs)).row();
+        left.add(wrappedLabel("Planetary defense structures are running at 100% efficiency. Manual override active for logistical restructuring and mass structural repair.", s.labelMuted, 0.96)).growX().left().padTop(g(gap.lg));
 
         var right = new Table();
         right.top().right();
@@ -4571,7 +4580,7 @@ var ModEngineUI = (function(){
         var instantText = new Table();
         instantText.left();
         instantText.add(label("INSTANT BUILD", s.label, 1.26)).left().row();
-        instantText.add(wrappedLabel("Deploy or deconstruct complex structures instantly.", s.labelMuted, 0.9)).width(state.compact ? textBlockWidth(480) : 340).left().padTop(g(gap.md));
+        instantText.add(wrappedLabel("Deploy or deconstruct complex structures instantly.", s.labelMuted, 0.9)).growX().left().padTop(g(gap.md));
         instantHead.add(instantText).growX();
         var instantToggle = textButton(state.buildInstant ? "ENABLED" : "DISABLED", state.buildInstant ? s.primary : s.action, function(){
             state.buildInstant = !state.buildInstant;
@@ -4589,7 +4598,7 @@ var ModEngineUI = (function(){
         var godText = new Table();
         godText.left();
         godText.add(label("GODMODE: STRUCTURES", s.label, 1.22)).left().row();
-        godText.add(wrappedLabel("Grant near-infinite health to allied buildings.", s.labelMuted, 0.9)).width(state.compact ? textBlockWidth(480) : 340).left().padTop(g(gap.md));
+        godText.add(wrappedLabel("Grant near-infinite health to allied buildings.", s.labelMuted, 0.9)).growX().left().padTop(g(gap.md));
         godHead.add(godText).growX();
         var godToggle = textButton(state.buildGodmode ? "ONLINE" : "OFFLINE", state.buildGodmode ? s.primary : s.action, function(){
             state.buildGodmode = !state.buildGodmode;
@@ -4766,7 +4775,7 @@ var ModEngineUI = (function(){
         try{ d.hidden(run(function(){ callHandler("buildSelectionAction", {action: "clear"}); })); }catch(eHidden){}
         var body = panel(s.d.panelStrong, g(gap.xl));
         body.add(sectionHeader("CHOOSE SELECTED BLOCK TYPE", builds.length + " BLOCKS / " + groups.length + " TYPES", getIcon("list", "menu"))).growX().row();
-        body.add(wrappedLabel("The area contains several structure types. Choose one type or continue with the entire selection.", s.labelMuted, 0.78)).width(state.compact ? textBlockWidth(430) : 650).left().padTop(g(gap.md)).row();
+        body.add(wrappedLabel("The area contains several structure types. Choose one type or continue with the entire selection.", s.labelMuted, 0.78)).growX().left().padTop(g(gap.md)).row();
         var grid = new Table();
         grid.left().top();
         var allButton = new Button(s.tile);
@@ -4956,7 +4965,7 @@ var ModEngineUI = (function(){
                 var outputRow = new Table();
                 outputRow.left().top();
                 outputRow.add(label(String(li + 1), s.labelDim, 0.58)).width(clampUiSize(38)).right().padRight(g(gap.sm));
-                outputRow.add(wrappedLabel(lineText, lineStyle, 0.78)).width(state.compact ? textBlockWidth(640) : 760).left().growX();
+                outputRow.add(wrappedLabel(lineText, lineStyle, 0.78)).growX().left();
                 logContent.add(outputRow).growX().left().padTop(li === 0 ? 0 : g(gap.xs)).row();
             }
         }
@@ -5038,7 +5047,7 @@ var ModEngineUI = (function(){
         var s = getStyles();
         var head = panel(s.d.panelStrong, g(gap.xl));
         head.add(label("HOTKEY CONFIGURATION", s.label, 1.18)).left().row();
-        head.add(wrappedLabel("Click a key cell, then press a keyboard key. ESC removes the selected bind. Changes are saved immediately.", s.labelMuted, 0.9)).width(textBlockWidth(820)).left().padTop(g(gap.lg));
+        head.add(wrappedLabel("Click a key cell, then press a keyboard key. ESC removes the selected bind. Changes are saved immediately.", s.labelMuted, 0.9)).growX().left().padTop(g(gap.lg));
         parent.add(head).growX().row();
 
         var modules = [
@@ -5364,7 +5373,7 @@ var ModEngineUI = (function(){
         global.add(label("CORE OFFENSIVE PARAMETERS", s.labelDim, 0.72)).left().padTop(g(gap.sm)).row();
         global.add(liveSliderBlock("GLOBAL DAMAGE MULTIPLIER", 1, 5, 0.1, state.weaponGlobalDamage, function(v){ return v.toFixed(1) + "x"; }, "1.0x", "3.0x", "5.0x", theme.cyan, function(v){ state.weaponGlobalDamage = v; })).growX().padTop(g(gap.xl)).row();
         var info = panel(s.d.panel, g(gap.md));
-        info.add(wrappedLabel("INFO: Global modifiers are applied to unit weapons only. Turret parameters are tuned separately in the turret control block.", s.labelMuted, 0.78)).width(state.compact ? textBlockWidth(420) : 280).left();
+        info.add(wrappedLabel("INFO: Global modifiers are applied to unit weapons only. Turret parameters are tuned separately in the turret control block.", s.labelMuted, 0.78)).growX().left();
         global.add(info).growX().padTop(g(gap.lg));
         left.add(global).growX().row();
 
@@ -5372,7 +5381,7 @@ var ModEngineUI = (function(){
         params.add(label("UNIT WEAPON PARAMETERS", s.labelCyan, 1.1)).left().row();
         params.add(label("FIELD UNIT CALIBRATION", s.labelDim, 0.72)).left().padTop(g(gap.sm)).row();
         params.add(liveSliderBlock("UNIT FIRE RATE", 0.2, 50, 0.1, state.unitFireRate, function(v){ return "x" + v.toFixed(1); }, "x0.2", "x25", "x50", theme.cyan, function(v){ state.unitFireRate = v; })).growX().padTop(g(gap.xl)).row();
-        params.add(wrappedLabel("Adjusts the native reload time of every unit weapon. A one-tick safety floor keeps all mounts firing without the per-frame reload loop that caused lag.", s.labelDim, 0.72)).width(state.compact ? textBlockWidth(500) : 470).left().padTop(g(gap.sm)).row();
+        params.add(wrappedLabel("Adjusts the native reload time of every unit weapon. A one-tick safety floor keeps all mounts firing without the per-frame reload loop that caused lag.", s.labelDim, 0.72)).growX().left().padTop(g(gap.sm)).row();
         params.add(liveSliderBlock("BULLET DAMAGE", 1, 500, 1, state.weaponBulletDamage, function(v){ return v.toFixed(1) + " DM"; }, "1.0 DM", "", "500.0 DM", theme.cyan, function(v){ state.weaponBulletDamage = v; })).growX().padTop(g(gap.lg)).row();
         params.add(liveSliderBlock("RANGE", 40, 1000, 1, state.weaponRange, function(v){ return Math.round(v) + "m"; }, "40m", "", "1000m", theme.cyan, function(v){ state.weaponRange = v; })).growX().padTop(g(gap.lg)).row();
         params.add(liveSliderBlock("INACCURACY (SPREAD)", 0, 15, 0.1, state.weaponSpread, function(v){ return v.toFixed(1) + "°"; }, "FIXED", "", "15° SPREAD", theme.cyan, function(v){ state.weaponSpread = v; })).growX().padTop(g(gap.lg)).row();
@@ -5392,7 +5401,7 @@ var ModEngineUI = (function(){
         turret.add(liveSliderBlock("TURRET SPREAD (INACCURACY)", 0, 15, 0.1, state.turretSpread, function(v){ return v <= 0 ? "PERFECT (0 spread)" : (v.toFixed(1) + "°"); }, "PERFECT", "", "15° SPREAD", theme.cyan, function(v){ state.turretSpread = v; })).growX().padTop(g(gap.lg)).row();
         turret.add(liveSliderBlock("TURRET RANGE BOOST", 0, 200, 1, state.turretRangeBoost, function(v){ return "+" + Math.round(v) + "%"; }, "0%", "", "200%", theme.cyan, function(v){ state.turretRangeBoost = v; })).growX().padTop(g(gap.lg)).row();
         turret.add(liveSliderBlock("TURRET DAMAGE", 0, 500, 1, state.turretDamageBoost, function(v){ return "+" + Math.round(v) + "%"; }, "0%", "", "500%", theme.cyan, function(v){ state.turretDamageBoost = v; })).growX().padTop(g(gap.lg)).row();
-        turret.add(summaryCard("ACTIVE TURRETS", String(activeTurretCount()), s.label, s.d.panel)).width(state.compact ? textBlockWidth(280) : 220).height(clampUiSize(92)).padTop(g(gap.xl)).left().row();
+        turret.add(summaryCard("ACTIVE TURRETS", String(activeTurretCount()), s.label, s.d.panel)).growX().height(clampUiSize(92)).padTop(g(gap.xl)).left().row();
         var turretActions = new Table();
         turretActions.left();
         turretActions.add(textButton("APPLY_TURRET_CHANGES", s.primary, function(){ callHandler("command", {command: "weapon:applyTurrets"}); })).height(clampUiSize(54)).minWidth(clampUiSize(190)).padRight(g(gap.md));
@@ -5417,7 +5426,7 @@ var ModEngineUI = (function(){
     function buildMining(parent){
         var s = getStyles();
         parent.add(label("Extraction Protocol", s.label, 1.72)).left().row();
-        parent.add(wrappedLabel("PROTOCOL: FLEET-WIDE RESOURCE HARVESTING. ASSIGN EACH MINING-CAPABLE UNIT TYPE ON THE MAP TO A TARGET ORE.", s.labelDim, 0.78)).width(textBlockWidth(900)).left().padTop(g(gap.sm)).row();
+        parent.add(wrappedLabel("PROTOCOL: FLEET-WIDE RESOURCE HARVESTING. ASSIGN EACH MINING-CAPABLE UNIT TYPE ON THE MAP TO A TARGET ORE.", s.labelDim, 0.78)).growX().left().padTop(g(gap.sm)).row();
 
         var split = new Table();
         split.top().left();
@@ -5582,7 +5591,7 @@ var ModEngineUI = (function(){
     function buildRadius(parent){
         var s = getStyles();
         parent.add(label("Radius Overview", s.label, 1.72)).left().row();
-        parent.add(wrappedLabel("REFERENCE: EFFECTIVE RANGE OF TURRETS AND UNITS CURRENTLY REGISTERED IN THIS SECTOR'S CONTENT DATABASE. VALUES ARE READ DIRECTLY FROM GAME DATA.", s.labelDim, 0.78)).width(textBlockWidth(900)).left().padTop(g(gap.sm)).row();
+        parent.add(wrappedLabel("REFERENCE: EFFECTIVE RANGE OF TURRETS AND UNITS CURRENTLY REGISTERED IN THIS SECTOR'S CONTENT DATABASE. VALUES ARE READ DIRECTLY FROM GAME DATA.", s.labelDim, 0.78)).growX().left().padTop(g(gap.sm)).row();
 
         var overlay = panel(s.d.panelStrong, g(gap.lg));
         overlay.add(sectionHeader("MAP OVERLAY", "LIVE RANGE CIRCLES ON WORLD", getIcon("eye", "zoom"))).growX().row();
@@ -5630,7 +5639,7 @@ var ModEngineUI = (function(){
         var s = getStyles();
         var p = panel(s.d.panelStrong, g(gap.xl));
         p.add(label(id.toUpperCase() + " CONTROL", s.labelGold, 1.42)).left().row();
-        p.add(wrappedLabel("This screen uses the same native style system and routes all actions to handlers without changing gameplay logic.", s.labelMuted, 0.92)).left().width(textBlockWidth(720)).padTop(g(gap.md)).row();
+        p.add(wrappedLabel("This screen uses the same native style system and routes all actions to handlers without changing gameplay logic.", s.labelMuted, 0.92)).growX().left().padTop(g(gap.md)).row();
         var row = new Table();
         row.left();
         if(state.compact){
@@ -5870,6 +5879,7 @@ var ModEngineUI = (function(){
 
     function show(){
         try{ Log.info("[mod-engine-ui] show: enter"); }catch(eLog){}
+        loadUiScale();
         var d = ensureDialog();
         try{ Log.info("[mod-engine-ui] show: ensureDialog ok"); }catch(eLog){}
         d.cont.clear();
