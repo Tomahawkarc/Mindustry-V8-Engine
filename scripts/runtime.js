@@ -809,6 +809,15 @@ var ModEngineRuntime = (function(){
     // Оставлены только тонкие обёртки для обратной совместимости.
 
     // Thin wrapper — new hud-positioning uses the proven working logic
+    function hudScale(){
+        try{
+            if(ui != null && ui.scaleFactor != null){
+                return ui.scaleFactor();
+            }
+        }catch(e){}
+        return 1.0;
+    }
+
     function hudStackBottom(anchor, anchorBottom, x, width, holderHeight){
         try {
             return HudPositioning.hudStackBottom(anchor, anchorBottom, x, width, holderHeight);
@@ -828,7 +837,8 @@ var ModEngineRuntime = (function(){
         extension.background(Styles.black6);
         extension.top().left();
         hudButton = createHudButton();
-        extension.add(hudButton).size(size).tooltip("Mod Engine");
+        var s = hudScale();
+        extension.add(hudButton).size(size * s).tooltip("Mod Engine");
         extension.image().color(Pal.gray).width(4).fillY();
         extension.row();
         extension.image().color(Pal.gray).height(4).fillX().colspan(2);
@@ -972,7 +982,12 @@ var ModEngineRuntime = (function(){
                 beginBuildSelection();
             }
         }));
-        holder.add(quickHudButton).size(155, 48).tooltip("Select structures: " + String(ui.state.buildSelectionFilter || "all"));
+        var s = hudScale();
+        try{
+            var ql = quickHudButton.getLabel != null ? quickHudButton.getLabel() : null;
+            if(ql != null) ql.setFontScale(0.85 * s);
+        }catch(eLabel){}
+        holder.add(quickHudButton).size(155 * s, 48 * s).tooltip("Select structures: " + String(ui.state.buildSelectionFilter || "all"));
         holder.pack();
         quickHudRoot.addChild(holder);
         var quickHudShown = null;
@@ -1086,29 +1101,41 @@ var ModEngineRuntime = (function(){
                 if(ui != null && ui.state != null) ui.state.simSpeed = next;
                 speedLabel.setText("x" + next);
             }, {track: theme.lineSoft, trackHighlight: theme.line, fill: theme.gold, handle: theme.gold, glow: theme.gold});
-            speedRow.add(slider.element).width(230).height(28).padRight(7);
-            speedRow.add(speedLabel).width(38);
-            speedRow.button("x1", Styles.cleart, run(function(){
+            var s = hudScale();
+            speedLabel.setFontScale(0.72 * s);
+            speedRow.add(slider.element).width(230 * s).height(28 * s).padRight(7 * s);
+            speedRow.add(speedLabel).width(38 * s);
+            var resetBtn = speedRow.button("x1", Styles.cleart, run(function(){
                 slider.setValue(1, true);
-            })).size(42, 30).padLeft(4);
-            holder.add(speedRow).width(360).row();
+            })).size(42 * s, 30 * s).padLeft(4 * s).get();
+            try{
+                var rbl = resetBtn != null && resetBtn.getLabel != null ? resetBtn.getLabel() : null;
+                if(rbl != null) rbl.setFontScale(0.75 * s);
+            }catch(eRb){}
+            holder.add(speedRow).width(360 * s).row();
             hasPreviousRow = true;
         }
 
         if(ui.state.quickItemsQuickAccess){
-            if(hasPreviousRow) holder.image().color(Pal.gray).height(3).fillX().row();
+            var s2 = hudScale();
+            if(hasPreviousRow) holder.image().color(Pal.gray).height(3 * s2).fillX().row();
             var itemButton = new Button(Styles.clearNonei);
             itemButton.name = "mod-engine-quick-items";
             itemButton.left();
             var itemIcon = null;
             try{ itemIcon = Icon.box; }catch(eBox){ try{ itemIcon = Icon.database; }catch(eDb){ itemIcon = Icon.add; } }
-            itemButton.image(itemIcon).size(22).padLeft(10).padRight(8);
-            itemButton.add("QUICK ITEMS").left().growX();
-            itemButton.add("+").color(theme.gold).padLeft(8).padRight(12);
+            itemButton.image(itemIcon).size(22 * s2).padLeft(10 * s2).padRight(8 * s2);
+            var itemLabel = new Packages.arc.scene.ui.Label("QUICK ITEMS", Styles.outlineLabel);
+            itemLabel.setFontScale(0.82 * s2);
+            itemButton.add(itemLabel).left().growX();
+            var plusLabel = new Packages.arc.scene.ui.Label("+", Styles.outlineLabel);
+            plusLabel.setFontScale(0.88 * s2);
+            plusLabel.setColor(theme.gold);
+            itemButton.add(plusLabel).padLeft(8 * s2).padRight(12 * s2);
             itemButton.clicked(run(function(){
                 try{ if(ui != null && ui.showQuickItems != null) ui.showQuickItems(); }catch(eDialog){ Log.err("Quick item dialog failed", eDialog); }
             }));
-            holder.add(itemButton).width(360).height(44).tooltip("Select base or modded items and add them to the core");
+            holder.add(itemButton).width(360 * s2).height(44 * s2).tooltip("Select base or modded items and add them to the core");
         }
         holder.pack();
         speedHudRoot.addChild(holder);
