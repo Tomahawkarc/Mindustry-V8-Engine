@@ -5718,16 +5718,35 @@ var ModEngineUI = (function(){
 
     function buildRender(parent){
         var s = getStyles();
-        parent.add(label("Render Controls", s.label, 1.72)).left().row();
-        parent.add(wrappedLabel("Visual overlays for the current battlefield. Settings use the same responsive sizing as the rest of the interface.", s.labelDim, 0.78)).growX().left().padTop(g(gap.sm)).row();
+        parent.add(label("Render Overview", s.label, 1.72)).left().row();
+        parent.add(wrappedLabel("REFERENCE: EFFECTIVE RANGE OF TURRETS AND UNITS CURRENTLY REGISTERED IN THIS SECTOR'S CONTENT DATABASE. VALUES ARE READ DIRECTLY FROM GAME DATA.", s.labelDim, 0.78)).growX().left().padTop(g(gap.sm)).row();
+
         var overlay = panel(s.d.panelStrong, g(gap.lg));
-        overlay.add(sectionHeader("UNIT HEALTH", "LIVE BATTLEFIELD STATUS", getIcon("heart", "health"))).growX().row();
-        overlay.add(wrappedLabel("Shows a compact health bar above every unit. Damaged allied units use an amber warning color; enemy units stay red.", s.labelMuted, 0.8)).growX().padTop(g(gap.sm)).row();
-        overlay.add(toggleTextButton(state.showUnitHealth ? "UNIT HEALTH: ON" : "UNIT HEALTH: OFF", state.showUnitHealth ? s.primary : s.action, state.showUnitHealth, function(){
+        overlay.add(sectionHeader("MAP OVERLAY", "LIVE RANGE CIRCLES ON WORLD", getIcon("eye", "zoom"))).growX().row();
+        overlay.add(wrappedLabel("Draws range zones on the map with Mindustry-style animated shield union (overlaps do not stack).", s.labelMuted, 0.8)).growX().padTop(g(gap.sm)).row();
+        var toggleRow = new Table();
+        toggleRow.left();
+        var turretToggle = toggleTextButton(state.showTurretRadii ? "TURRET RADII: ON" : "TURRET RADII: OFF", state.showTurretRadii ? s.primary : s.action, state.showTurretRadii, function(){
+            callHandler("command", {command: "radius:toggleTurrets"});
+            rebuildContent();
+        });
+        toggleRow.add(turretToggle).height(clampUiSize(50)).growX().padRight(g(gap.md));
+        var unitToggle = toggleTextButton(state.showUnitRadii ? "UNIT RADII: ON" : "UNIT RADII: OFF", state.showUnitRadii ? s.primary : s.action, state.showUnitRadii, function(){
+            callHandler("command", {command: "radius:toggleUnits"});
+            rebuildContent();
+        });
+        toggleRow.add(unitToggle).height(clampUiSize(50)).growX();
+        overlay.add(toggleRow).growX().padTop(g(gap.md));
+        parent.add(overlay).growX().padTop(g(gap.lg)).row();
+
+        var healthPanel = panel(s.d.panelStrong, g(gap.lg));
+        healthPanel.add(sectionHeader("UNIT HEALTH", "LIVE BATTLEFIELD STATUS", getIcon("heart", "health"))).growX().row();
+        healthPanel.add(wrappedLabel("Shows health above units. Damaged allied units are amber; enemy units stay red.", s.labelMuted, 0.8)).growX().padTop(g(gap.sm)).row();
+        healthPanel.add(textButton(state.showUnitHealth ? "UNIT HEALTH: ON" : "UNIT HEALTH: OFF", state.showUnitHealth ? s.primary : s.action, function(){
             callHandler("command", {command: "render:toggleHealth"});
             rebuildContent();
-        })).height(clampUiSize(50)).growX().padTop(g(gap.md)).row();
-        parent.add(overlay).growX().padTop(g(gap.lg)).row();
+        })).height(clampUiSize(50)).growX().padTop(g(gap.md));
+        parent.add(healthPanel).growX().padTop(g(gap.md)).row();
     }
 
 
