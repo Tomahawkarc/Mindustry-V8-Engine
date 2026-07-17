@@ -535,14 +535,14 @@ var ModEngineUI = (function(){
                 swatch.background(makeDrawable(color, Color.valueOf(palette.secondary), 1, color, false));
                 var inner = new Table();
                 inner.left();
-                inner.add(swatch).size(38).padRight(gap.md);
+                inner.add(swatch).size(clampUiSize(38)).padRight(gap.md);
                 inner.add(label(themeName.toUpperCase(), active ? s.labelPrimary : s.labelMuted, 0.82)).left().growX();
                 button.add(inner).grow().left().pad(gap.sm);
                 button.clicked(run(function(){
                     d.hide();
                     applyTheme(themeName);
                 }));
-                grid.add(button).width(state.compact ? 180 : 220).height(62).padRight(gap.sm).padBottom(gap.sm);
+                grid.add(button).width(state.compact ? 180 : 220).height(clampUiSize(62)).padRight(gap.sm).padBottom(gap.sm);
                 if((index + 1) % (state.compact ? 2 : 3) === 0) grid.row();
             })(names[i], i);
         }
@@ -572,9 +572,9 @@ var ModEngineUI = (function(){
             saveUiScale();
             applyUiScale();
         });
-        body.add(reset).height(38).padTop(gap.sm).row();
+        body.add(reset).height(clampUiSize(38)).padTop(gap.sm).row();
         d.cont.add(body).width(Math.min(760, Math.max(430, ArcCore.graphics.getWidth() - 100)));
-        d.buttons.add(textButton("CLOSE", s.action, function(){ d.hide(); })).height(48).width(180).padTop(gap.md);
+        d.buttons.add(textButton("CLOSE", s.action, function(){ d.hide(); })).height(clampUiSize(48)).width(180).padTop(gap.md);
         d.show();
     }
 
@@ -778,19 +778,19 @@ var ModEngineUI = (function(){
         return v;
     }
 
-    // Clamp a hard-coded pixel value to the current scale. The value is
-    // returned AS-IS — the global Group.setScale on root already handles
-    // visual scaling. The function exists for two reasons:
-    //   1. Call sites can document their intent ("this number was picked
-    //      for a 1500-px design and is safe to scale") without having to
-    //      know whether the scaling machinery is on or off.
-    //   2. Future migrations can flip the implementation without touching
-    //      every call site.
+    // Clamp a hard-coded pixel value to the current scale. Returns the
+    // scaled value, with an 18-px floor so a touch target never
+    // disappears entirely. This is the SINGLE source of per-element
+    // scaling; the rest of the menu reads localScale() through this
+    // helper and through label()'s fontScale multiplier.
     function clampUiSize(value){
         if(value == null) return value;
         var v = Number(value);
         if(isNaN(v)) return value;
-        return v;
+        var s = localScale();
+        var scaled = v * s;
+        if(scaled < 18 && v >= 18) scaled = 18;
+        return scaled;
     }
 
     // Apply the current local scale. The only thing that changes is the per-
@@ -870,13 +870,12 @@ var ModEngineUI = (function(){
         l.setAlignment(Align.left);
         l.setWrap(wrap === true);
         if(scale != null){
-            // The per-label scale is used as-is. The global localScale()
-            // is applied separately to the root Group via setScale, so
-            // the entire tree (text and cells together) shrinks by the
-            // same factor in lockstep. Multiplying here as well would
-            // double-apply the scale and leave text disproportionately
-            // small relative to its container.
-            l.setFontScale(scale);
+            // Per-label scale is multiplied by the global localScale so
+            // text shrinks on small screens / when the user lowers the
+            // manual override. setFontScale only changes glyph size; the
+            // surrounding cell keeps its pre-scale width so the
+            // text-block wrap behaviour is stable.
+            l.setFontScale(scale * localScale());
         }
         return l;
     }
@@ -1135,7 +1134,7 @@ var ModEngineUI = (function(){
                     onSelect(entry.key);
                 });
                 button.setChecked(active);
-                row.add(button).height(38).minWidth(state.compact ? 135 : 160).padRight(gap.sm).padBottom(gap.sm);
+                row.add(button).height(clampUiSize(38)).minWidth(state.compact ? 135 : 160).padRight(gap.sm).padBottom(gap.sm);
                 if(horizontal !== true && (index + 1) % cols === 0) row.row();
             })(entries[e], e);
         }
@@ -1153,7 +1152,7 @@ var ModEngineUI = (function(){
         var t = new Table();
         t.left();
         if(icon != null){
-            t.image(icon).size(28).color(theme.cyan).padRight(gap.md);
+            t.image(icon).size(clampUiSize(28)).color(theme.cyan).padRight(gap.md);
         }
         t.add(label(title, getStyles().label, 1.25)).left().growX();
         if(code != null){
@@ -1213,14 +1212,14 @@ var ModEngineUI = (function(){
         themeButton.left();
         var themeSwatch = new Table();
         themeSwatch.background(makeDrawable(theme.gold, theme.cyan, 1, theme.gold, false));
-        themeButton.add(themeSwatch).size(20).padLeft(gap.sm).padRight(gap.sm);
+        themeButton.add(themeSwatch).size(clampUiSize(20)).padLeft(gap.sm).padRight(gap.sm);
         if(!state.compact) themeButton.add(label("THEME: " + String(state.themeName).toUpperCase(), s.labelGold, 0.68)).left().padRight(gap.md);
         themeButton.clicked(run(showThemeDialog));
-        actions.add(themeButton).height(44).minWidth(state.compact ? 44 : 142).padRight(gap.sm);
+        actions.add(themeButton).height(clampUiSize(44)).minWidth(state.compact ? 44 : 142).padRight(gap.sm);
         actions.add(iconButton(getIcon("info"), function(){
             try{ showWelcomeDialog(true); }catch(eInfo){ callHandler("openDocs", {}); }
-        })).size(48).padRight(gap.sm);
-        actions.add(iconButton(getIcon("cancel", "close"), function(){ hide(); })).size(48);
+        })).size(clampUiSize(48)).padRight(gap.sm);
+        actions.add(iconButton(getIcon("cancel", "close"), function(){ hide(); })).size(clampUiSize(48));
         top.add(actions).right();
 
         parent.add(top).growX().minHeight(state.compact ? 86 : 72).row();
@@ -1241,19 +1240,19 @@ var ModEngineUI = (function(){
             footer.add(label("BUILD_ENGINE V8.0.42", s.labelCyan, 0.78)).left().growX().row();
             var links = new Table();
             links.left();
-            links.add(textButton("Docs", s.action, function(){ callHandler("openDocs", {}); })).height(34).padRight(gap.sm);
-            links.add(textButton("Language", s.action, function(){ callHandler("language", {language: "toggle"}); })).height(34);
+            links.add(textButton("Docs", s.action, function(){ callHandler("openDocs", {}); })).height(clampUiSize(34)).padRight(gap.sm);
+            links.add(textButton("Language", s.action, function(){ callHandler("language", {language: "toggle"}); })).height(clampUiSize(34));
             footer.add(links).left().padTop(gap.xs).row();
             footer.add(label("SYSTEM_LINK ACTIVE", s.labelCyan, 0.78)).left().padTop(gap.xs);
             parent.add(footer).growX().minHeight(84);
         }else{
             footer.add(label("BUILD_ENGINE V8.0.42", s.labelCyan, 0.82)).padRight(gap.lg);
             footer.add(label("|", s.labelDim, 0.82)).padRight(gap.lg);
-            footer.add(textButton("Docs", s.action, function(){ callHandler("openDocs", {}); })).height(34).padRight(gap.sm);
-            footer.add(textButton("Language", s.action, function(){ callHandler("language", {language: "toggle"}); })).height(34);
+            footer.add(textButton("Docs", s.action, function(){ callHandler("openDocs", {}); })).height(clampUiSize(34)).padRight(gap.sm);
+            footer.add(textButton("Language", s.action, function(){ callHandler("language", {language: "toggle"}); })).height(clampUiSize(34));
             footer.add().growX();
             footer.add(label("SYSTEM_LINK ACTIVE", s.labelCyan, 0.82)).right();
-            parent.add(footer).growX().height(48);
+            parent.add(footer).growX().height(clampUiSize(48));
         }
     }
 
@@ -1298,10 +1297,10 @@ var ModEngineUI = (function(){
         }));
 
         if(horizontal){
-            b.image(safeIcon(entry.icon)).size(26).color(state.tab === entry.id ? theme.gold : theme.muted).padRight(gap.sm);
+            b.image(safeIcon(entry.icon)).size(clampUiSize(26)).color(state.tab === entry.id ? theme.gold : theme.muted).padRight(gap.sm);
             b.add(label(entry.text, state.tab === entry.id ? s.labelGold : s.labelMuted, 0.78)).left();
         }else{
-            b.image(safeIcon(entry.icon)).size(28).color(state.tab === entry.id ? theme.gold : theme.muted).padLeft(gap.md).padRight(gap.lg);
+            b.image(safeIcon(entry.icon)).size(clampUiSize(28)).color(state.tab === entry.id ? theme.gold : theme.muted).padLeft(gap.md).padRight(gap.lg);
             b.add(label(entry.text, state.tab === entry.id ? s.labelGold : s.labelMuted, 0.92)).left().growX();
         }
         return b;
@@ -1350,9 +1349,9 @@ var ModEngineUI = (function(){
                 inner.add(copy).left().growX();
                 btn.add(inner).growX().left().padLeft(gap.sm).padRight(gap.sm);
                 if(horizontal){
-                    row.add(btn).width(96).height(42).padRight(gap.xs);
+                    row.add(btn).width(clampUiSize(96)).height(42).padRight(gap.xs);
                 }else{
-                    row.add(btn).width(250).height(52).padBottom(gap.xs).row();
+                    row.add(btn).width(clampUiSize(250)).height(52).padBottom(gap.xs).row();
                 }
             })(modes[i]);
         }
@@ -1386,13 +1385,13 @@ var ModEngineUI = (function(){
         operator.left();
         operator.background(s.d.panel);
         operator.margin(gap.sm);
-        operator.image(getIcon("admin", "settings")).size(34).color(theme.gold).padRight(gap.md);
+        operator.image(getIcon("admin", "settings")).size(clampUiSize(34)).color(theme.gold).padRight(gap.md);
         var opText = new Table();
         opText.left();
         opText.add(label("ADMIN_CORE", s.labelGold, 0.82)).left().row();
         opText.add(label("CONNECTED: P-102", s.labelMuted, 0.72)).left();
         operator.add(opText).growX();
-        sidebarHost.add(operator).growX().height(64).padTop(gap.lg).row();
+        sidebarHost.add(operator).growX().height(clampUiSize(64)).padTop(gap.lg).row();
 
         // Sidebar is hidden entirely below 1300px (compact mode), but at
         // 1300-1700px on a phone the 22% rule still leaves a fixed ~280-px
@@ -1421,7 +1420,7 @@ var ModEngineUI = (function(){
         var pane = new ScrollPane(outerRow, s.pane);
         navScrollPane = pane;
         wrapper.add(pane).grow();
-        parent.add(wrapper).growX().height(76).row();
+        parent.add(wrapper).growX().height(clampUiSize(76)).row();
         sidebarHost = navTable;
     }
 
@@ -1430,9 +1429,9 @@ var ModEngineUI = (function(){
         var entries = navEntries();
         for(var i = 0; i < entries.length; i++){
             if(horizontal){
-                table.add(makeNavButton(entries[i], true)).height(52).minWidth(132).padRight(gap.sm);
+                table.add(makeNavButton(entries[i], true)).height(clampUiSize(52)).minWidth(132).padRight(gap.sm);
             }else{
-                table.add(makeNavButton(entries[i], false)).growX().height(56).padBottom(gap.sm).row();
+                table.add(makeNavButton(entries[i], false)).growX().height(clampUiSize(56)).padBottom(gap.sm).row();
             }
         }
     }
@@ -1546,13 +1545,13 @@ var ModEngineUI = (function(){
         var status = new Table();
         status.left();
         var threat = threatLevelInfo();
-        status.add(statusPair("SECTOR", currentSectorLabel(), s.labelCyan)).width(state.compact ? textBlockWidth(320) : 320).height(96).padRight(gap.md);
-        status.add(statusPair("THREAT_LEVEL", threat.text, threat.style)).growX().minWidth(200).height(96);
+        status.add(statusPair("SECTOR", currentSectorLabel(), s.labelCyan)).width(state.compact ? textBlockWidth(320) : 320).height(clampUiSize(96)).padRight(gap.md);
+        status.add(statusPair("THREAT_LEVEL", threat.text, threat.style)).growX().minWidth(clampUiSize(200)).height(96);
         left.add(status).growX().left().padTop(gap.lg);
 
         hero.add(left).growX().left().top();
         if(!state.compact){
-            hero.add(buildCoreVisual()).size(230).padLeft(gap.xl);
+            hero.add(buildCoreVisual()).size(clampUiSize(230)).padLeft(gap.xl);
         }
         parent.add(hero).growX().minHeight(260).row();
 
@@ -1600,7 +1599,7 @@ var ModEngineUI = (function(){
             flowList.clearChildren();
             flowList.top().left();
             if(lines.length === 0){
-                flowList.add(flowEmptyLabel).left().height(28).padTop(2).row();
+                flowList.add(flowEmptyLabel).left().height(clampUiSize(28)).padTop(2).row();
                 return;
             }
             for(var i = 0; i < lines.length; i++){
@@ -1608,14 +1607,14 @@ var ModEngineUI = (function(){
                 var frow = new Table();
                 frow.left();
                 try{
-                    frow.image(contentDrawable(line.item, getIcon("box", "database"))).size(28).color(contentColor(line.item, theme.cyan)).padRight(gap.sm);
+                    frow.image(contentDrawable(line.item, getIcon("box", "database"))).size(clampUiSize(28)).color(contentColor(line.item, theme.cyan)).padRight(gap.sm);
                 }catch(eIcon){}
                 frow.add(label(String(line.item.localizedName).toUpperCase(), s.labelMuted, 0.76)).left().growX();
                 frow.add(label(String(line.amount), s.label, 0.8)).padRight(gap.sm);
                 var rateStyle = line.rate > 0 ? s.labelCyan : (line.rate < 0 ? s.labelRed : s.labelDim);
                 var rateText = "(" + (line.rate > 0 ? "+" : "") + line.rate + "/s)";
                 frow.add(label(rateText, rateStyle, 0.76)).right();
-                flowList.add(frow).growX().height(32).padTop(i === 0 ? 0 : gap.xs).row();
+                flowList.add(frow).growX().height(clampUiSize(32)).padTop(i === 0 ? 0 : gap.xs).row();
             }
         }
 
@@ -1638,7 +1637,7 @@ var ModEngineUI = (function(){
         settings.add(powerRow).growX().padTop(gap.md).row();
         var powerStatusLabel = label(powerInfo.hasNetwork ? "GRID ONLINE" : "NO POWER NETWORK DETECTED", powerInfo.hasNetwork ? s.labelMuted : s.labelDim, 0.72);
         settings.add(powerStatusLabel).left().padTop(gap.xs).row();
-        settings.add(textButton("GLOBAL_PREFERENCES", s.action, function(){ callHandler("command", {command: "preferences"}); })).growX().height(54).padTop(gap.lg);
+        settings.add(textButton("GLOBAL_PREFERENCES", s.action, function(){ callHandler("command", {command: "preferences"}); })).growX().height(clampUiSize(54)).padTop(gap.lg);
 
         function refreshPowerRow(info){
             var rounded = Math.round(info.value);
@@ -1683,7 +1682,7 @@ var ModEngineUI = (function(){
         t.add(line).growX().row();
         var bar = new Table();
         bar.background(progressDrawable(percent, color));
-        t.add(bar).growX().height(7).padTop(gap.sm);
+        t.add(bar).growX().height(clampUiSize(7)).padTop(gap.sm);
         return t;
     }
 
@@ -1699,11 +1698,11 @@ var ModEngineUI = (function(){
         valueLabel.setAlignment(Align.right);
         function fitValue(text){
             // The displayed text length determines the base font scale.
-            // We do NOT multiply by localScale() — the global Group.setScale
-            // on root already shrinks every label in lockstep.
+            // We also multiply by localScale() so the value label shrinks
+            // on small screens along with every other label in the menu.
             var len = String(text).length;
             var baseScale = len > 20 ? 0.62 : (len > 14 ? 0.74 : (len > 9 ? 0.86 : 1));
-            valueLabel.setFontScale(baseScale);
+            valueLabel.setFontScale(baseScale * localScale());
         }
         fitValue(formatter(current));
         line.add(valueLabel).width(state.compact ? 126 : 154).right();
@@ -1721,7 +1720,7 @@ var ModEngineUI = (function(){
             handle: color || theme.gold,
             glow: color || theme.gold
         });
-        t.add(slider.element).growX().height(34).padTop(gap.md).row();
+        t.add(slider.element).growX().height(clampUiSize(34)).padTop(gap.md).row();
 
         var marks = new Table();
         marks.add(label(leftMark, s.labelDim, 0.66)).left().growX();
@@ -2214,18 +2213,18 @@ var ModEngineUI = (function(){
                 timeLabel.setText(nextText);
             }
         }));
-        p.add(timer).size(260).center().row();
+        p.add(timer).size(clampUiSize(260)).center().row();
 
         var actions = new Table();
         actions.center();
         actions.add(textButton("RUN_WAVE", s.primary, function(){
             callHandler("command", {command: "waves:run", wave: currentWaveIndex()});
-        })).height(58).minWidth(170).padRight(gap.md);
+        })).height(clampUiSize(58)).minWidth(170).padRight(gap.md);
         actions.add(textButton("RESET", s.action, function(){
             state.waveIndex = 1;
             callHandler("command", {command: "waves:reset"});
             rebuildContent();
-        })).height(58).minWidth(170);
+        })).height(clampUiSize(58)).minWidth(170);
         p.add(actions).center().padTop(gap.lg);
         return p;
     }
@@ -2243,20 +2242,20 @@ var ModEngineUI = (function(){
             state.waveIndex = num;
             callHandler("command", {command: "waves:index", wave: num});
         });
-        valueBox.add(waveField).left().growX().height(56).padLeft(gap.lg);
+        valueBox.add(waveField).left().growX().height(clampUiSize(56)).padLeft(gap.lg);
         var buttons = new Table();
         buttons.add(textButton("+", s.action, function(){
             state.waveIndex = currentWaveIndex() + 1;
             callHandler("command", {command: "waves:index", wave: state.waveIndex});
             rebuildContent();
-        })).size(40).row();
+        })).size(clampUiSize(40)).row();
         buttons.add(textButton("-", s.action, function(){
             state.waveIndex = Math.max(0, currentWaveIndex() - 1);
             callHandler("command", {command: "waves:index", wave: state.waveIndex});
             rebuildContent();
-        })).size(40);
+        })).size(clampUiSize(40));
         valueBox.add(buttons).right().padRight(gap.md);
-        t.add(valueBox).growX().height(90).padTop(gap.md).row();
+        t.add(valueBox).growX().height(clampUiSize(90)).padTop(gap.md).row();
 
         var minMax = new Table();
         minMax.add(label("MIN: 0", s.labelDim, 0.66)).left().growX();
@@ -2297,7 +2296,7 @@ var ModEngineUI = (function(){
         table.add(label(resources, s.labelCyan, 0.82)).width(w[2]).left().pad(gap.md);
         var threatBar = new Table();
         threatBar.background(progressDrawable(threat, theme.red));
-        table.add(threatBar).width(w[3]).height(8).left().pad(gap.md);
+        table.add(threatBar).width(w[3]).height(clampUiSize(8)).left().pad(gap.md);
         table.add(label(result, s.labelGold, 0.7)).width(w[4]).left().pad(gap.md).row();
     }
 
@@ -2317,7 +2316,7 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         auto.setChecked(state.autoWave);
-        header.add(auto).height(44).minWidth(170).right();
+        header.add(auto).height(clampUiSize(44)).minWidth(170).right();
         params.add(header).growX().row();
         params.add(label("PRIMARY PARAMETERS & THREAT SCALING", s.labelMuted, 0.82)).left().padTop(gap.sm).row();
 
@@ -2331,8 +2330,8 @@ var ModEngineUI = (function(){
             top.add(timer).growX().row();
             top.add(params).growX().padTop(gap.lg);
         }else{
-            top.add(timer).width(clampUiSize(420)).height(470).padRight(gap.xl);
-            top.add(params).growX().height(350);
+            top.add(timer).width(clampUiSize(420)).height(clampUiSize(470)).padRight(gap.xl);
+            top.add(params).growX().height(clampUiSize(350));
         }
         parent.add(top).growX().row();
 
@@ -2342,13 +2341,13 @@ var ModEngineUI = (function(){
         var spawnRate = waveSpawnRate();
         var bossEstimate = waveBossEstimate();
         if(state.compact){
-            stats.add(waveStat("ENEMY_COUNT", String(enemyCount), s.labelGold, theme.gold)).height(116).growX().row();
-            stats.add(waveStat("SPAWN_RATE", spawnRate.toFixed(1) + " /S", s.labelCyan, theme.cyan)).height(116).growX().padTop(gap.md).row();
-            stats.add(waveStat("BOSS_ESTIMATE", "WAVE " + bossEstimate, s.labelRed, theme.red)).height(116).growX().padTop(gap.md);
+            stats.add(waveStat("ENEMY_COUNT", String(enemyCount), s.labelGold, theme.gold)).height(clampUiSize(116)).growX().row();
+            stats.add(waveStat("SPAWN_RATE", spawnRate.toFixed(1) + " /S", s.labelCyan, theme.cyan)).height(clampUiSize(116)).growX().padTop(gap.md).row();
+            stats.add(waveStat("BOSS_ESTIMATE", "WAVE " + bossEstimate, s.labelRed, theme.red)).height(clampUiSize(116)).growX().padTop(gap.md);
         }else{
-            stats.add(waveStat("ENEMY_COUNT", String(enemyCount), s.labelGold, theme.gold)).height(116).growX().padRight(gap.lg);
-            stats.add(waveStat("SPAWN_RATE", spawnRate.toFixed(1) + " /S", s.labelCyan, theme.cyan)).height(116).growX().padRight(gap.lg);
-            stats.add(waveStat("BOSS_ESTIMATE", "WAVE " + bossEstimate, s.labelRed, theme.red)).height(116).growX();
+            stats.add(waveStat("ENEMY_COUNT", String(enemyCount), s.labelGold, theme.gold)).height(clampUiSize(116)).growX().padRight(gap.lg);
+            stats.add(waveStat("SPAWN_RATE", spawnRate.toFixed(1) + " /S", s.labelCyan, theme.cyan)).height(clampUiSize(116)).growX().padRight(gap.lg);
+            stats.add(waveStat("BOSS_ESTIMATE", "WAVE " + bossEstimate, s.labelRed, theme.red)).height(clampUiSize(116)).growX();
         }
         parent.add(stats).growX().padTop(gap.lg).row();
 
@@ -2368,13 +2367,13 @@ var ModEngineUI = (function(){
         var pagerPrev = textButton("< PREV", state.wavePreviewPage > 0 ? s.action : s.action, function(){
             if(state.wavePreviewPage > 0){ state.wavePreviewPage--; rebuildContent(); }
         });
-        pager.add(pagerPrev).height(42).minWidth(100).padRight(gap.md);
+        pager.add(pagerPrev).height(clampUiSize(42)).minWidth(100).padRight(gap.md);
         pager.add(label("WAVES " + pageStartWave + " - " + pageEndWave, s.labelCyan, 0.86)).center().growX();
         var pagerNext = textButton("NEXT >", s.action, function(){
             state.wavePreviewPage++;
             rebuildContent();
         });
-        pager.add(pagerNext).height(42).minWidth(100).padLeft(gap.md);
+        pager.add(pagerNext).height(clampUiSize(42)).minWidth(100).padLeft(gap.md);
         forecastPanel.add(pager).growX().padTop(gap.md).row();
 
         var forecastList = new Table();
@@ -2400,7 +2399,7 @@ var ModEngineUI = (function(){
                     var comp = composition[ci];
                     var iconCell = new Table();
                     iconCell.left();
-                    try{ iconCell.image(contentDrawable(comp.type, getIcon("units", "factory"))).size(30).padRight(gap.xs); }catch(eIcon){}
+                    try{ iconCell.image(contentDrawable(comp.type, getIcon("units", "factory"))).size(clampUiSize(30)).padRight(gap.xs); }catch(eIcon){}
                     iconCell.add(label("x" + comp.count, s.labelMuted, 0.76)).left();
                     unitIcons.add(iconCell).padRight(gap.lg).padTop(gap.sm);
                 }
@@ -2419,7 +2418,7 @@ var ModEngineUI = (function(){
         button.clicked(run(action));
         var body = new Table();
         body.left().top();
-        body.image(icon).size(28).color(style === s.labelRed ? theme.red : (style === s.labelCyan ? theme.cyan : theme.gold)).padRight(gap.md);
+        body.image(icon).size(clampUiSize(28)).color(style === s.labelRed ? theme.red : (style === s.labelCyan ? theme.cyan : theme.gold)).padRight(gap.md);
         var copy = new Table();
         copy.left();
         copy.add(label(title, style || s.labelGold, 0.9)).left().row();
@@ -2487,7 +2486,7 @@ var ModEngineUI = (function(){
         ];
         var opCols = state.compact ? 1 : 2;
         for(var ci = 0; ci < cards.length; ci++){
-            operations.add(cards[ci]).growX().height(112).minWidth(state.compact ? 0 : 330).padRight(gap.lg).padBottom(gap.lg);
+            operations.add(cards[ci]).growX().height(clampUiSize(112)).minWidth(state.compact ? 0 : 330).padRight(gap.lg).padBottom(gap.lg);
             if((ci + 1) % opCols === 0) operations.row();
         }
         parent.add(operations).growX().padTop(gap.md).row();
@@ -2500,7 +2499,7 @@ var ModEngineUI = (function(){
             rebuildContent(false);
         });
         quickSpeed.setChecked(state.worldSpeedQuickAccess);
-        speed.add(quickSpeed).height(44).growX().padTop(gap.lg).row();
+        speed.add(quickSpeed).height(clampUiSize(44)).growX().padTop(gap.lg).row();
         speed.add(liveSliderBlock("SPEED_MULT", 1, 16, 1, state.simSpeed, function(v){ return "x" + Math.round(v); }, "x1", "x8", "x16", theme.gold, function(v){
             state.simSpeed = Math.round(v);
             callHandler("command", {command: "world:simSpeed", speed: state.simSpeed});
@@ -2516,7 +2515,7 @@ var ModEngineUI = (function(){
                     rebuildContent(false);
                 });
                 button.setChecked(state.simSpeed === mult);
-                speedButtons.add(button).height(42).minWidth(76).padRight(gap.sm);
+                speedButtons.add(button).height(clampUiSize(42)).minWidth(76).padRight(gap.sm);
             })(speedVals[si]);
         }
         speed.add(speedButtons).left().padTop(gap.lg);
@@ -2539,13 +2538,13 @@ var ModEngineUI = (function(){
         var actions = new Table();
         actions.left();
         if(state.compact){
-            actions.add(textButton("PING_ALL", s.primary, function(){ callHandler("command", {command: "links:pingAll"}); })).height(54).growX().row();
-            actions.add(textButton("REBUILD_LINKS", s.action, function(){ callHandler("command", {command: "links:rebuild"}); })).height(54).growX().padTop(gap.md).row();
-            actions.add(textButton("CLEAR_CACHE", s.action, function(){ callHandler("command", {command: "links:clearCache"}); })).height(54).growX().padTop(gap.md);
+            actions.add(textButton("PING_ALL", s.primary, function(){ callHandler("command", {command: "links:pingAll"}); })).height(clampUiSize(54)).growX().row();
+            actions.add(textButton("REBUILD_LINKS", s.action, function(){ callHandler("command", {command: "links:rebuild"}); })).height(clampUiSize(54)).growX().padTop(gap.md).row();
+            actions.add(textButton("CLEAR_CACHE", s.action, function(){ callHandler("command", {command: "links:clearCache"}); })).height(clampUiSize(54)).growX().padTop(gap.md);
         }else{
-            actions.add(textButton("PING_ALL", s.primary, function(){ callHandler("command", {command: "links:pingAll"}); })).height(54).minWidth(180).padRight(gap.md);
-            actions.add(textButton("REBUILD_LINKS", s.action, function(){ callHandler("command", {command: "links:rebuild"}); })).height(54).minWidth(210).padRight(gap.md);
-            actions.add(textButton("CLEAR_CACHE", s.action, function(){ callHandler("command", {command: "links:clearCache"}); })).height(54).minWidth(190);
+            actions.add(textButton("PING_ALL", s.primary, function(){ callHandler("command", {command: "links:pingAll"}); })).height(clampUiSize(54)).minWidth(180).padRight(gap.md);
+            actions.add(textButton("REBUILD_LINKS", s.action, function(){ callHandler("command", {command: "links:rebuild"}); })).height(clampUiSize(54)).minWidth(210).padRight(gap.md);
+            actions.add(textButton("CLEAR_CACHE", s.action, function(){ callHandler("command", {command: "links:clearCache"}); })).height(clampUiSize(54)).minWidth(190);
         }
         p.add(actions).left().padTop(gap.xl);
         parent.add(p).growX().row();
@@ -2558,9 +2557,9 @@ var ModEngineUI = (function(){
         row.left();
         row.margin(gap.md);
         row.add(label(name, s.labelGold, 0.9)).left().growX();
-        row.add(label(status, color === theme.cyan ? s.labelCyan : (color === theme.red ? s.labelRed : s.labelGold), 0.82)).width(120).left();
-        row.add(textButton("OPEN", s.action, function(){ callHandler("command", {command: command}); })).height(42).minWidth(110);
-        table.add(row).growX().height(72).padBottom(gap.md).row();
+        row.add(label(status, color === theme.cyan ? s.labelCyan : (color === theme.red ? s.labelRed : s.labelGold), 0.82)).width(clampUiSize(120)).left();
+        row.add(textButton("OPEN", s.action, function(){ callHandler("command", {command: command}); })).height(clampUiSize(42)).minWidth(110);
+        table.add(row).growX().height(clampUiSize(72)).padBottom(gap.md).row();
     }
 
     function getItems(){
@@ -2600,12 +2599,12 @@ var ModEngineUI = (function(){
         var accent = contentColor(item, theme.cyan);
         var iconBack = new Table();
         iconBack.background(makeDrawable(Color.valueOf("151c25"), Color.valueOf("151c25"), 0, null, false));
-        iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(44).color(accent);
-        b.add(iconBack).size(68).padTop(gap.lg).row();
+        iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(clampUiSize(44)).color(accent);
+        b.add(iconBack).size(clampUiSize(68)).padTop(gap.lg).row();
         b.add(label(String(item.localizedName).toUpperCase(), s.labelMuted, 0.72)).center().padTop(gap.md);
         if(isExternalModContent(item)){
             b.row();
-            b.add(wrappedLabel(String(item.name), s.labelCyan, 0.52)).width(132).center().padTop(gap.xs);
+            b.add(wrappedLabel(String(item.name), s.labelCyan, 0.52)).width(clampUiSize(132)).center().padTop(gap.xs);
         }
         return b;
     }
@@ -2620,13 +2619,13 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         base.setChecked(state.itemContentMode === "base");
-        controls.add(base).height(42).minWidth(150).padRight(gap.sm);
+        controls.add(base).height(clampUiSize(42)).minWidth(150).padRight(gap.sm);
         var mods = textButton("MOD CONTENT  (" + modCount + ")", state.itemContentMode === "mods" ? s.primary : s.action, function(){
             state.itemContentMode = "mods";
             rebuildContent();
         });
         mods.setChecked(state.itemContentMode === "mods");
-        controls.add(mods).height(42).minWidth(180);
+        controls.add(mods).height(clampUiSize(42)).minWidth(180);
         return controls;
     }
 
@@ -2677,11 +2676,11 @@ var ModEngineUI = (function(){
         controls.add(textButton("SELECT ALL", s.action, function(){
             for(var i = 0; i < items.length; i++) selection[String(items[i].name)] = true;
             refreshSelection();
-        })).height(44).minWidth(150).padRight(gap.sm);
+        })).height(clampUiSize(44)).minWidth(150).padRight(gap.sm);
         controls.add(textButton("CLEAR", s.action, function(){
             state.quickItemSelection = selection = {};
             refreshSelection();
-        })).height(44).minWidth(110).padRight(gap.lg);
+        })).height(clampUiSize(44)).minWidth(110).padRight(gap.lg);
         controls.add(selectedLabel).left().growX();
 
         var amountLabel = label("AMOUNT PER ITEM", s.labelMuted, 0.72);
@@ -2689,7 +2688,7 @@ var ModEngineUI = (function(){
         var amountField = inlineNumberField(state.quickItemAmount, 1, 999999, s.labelCyan.fontColor, function(num){
             state.quickItemAmount = num;
         });
-        controls.add(amountField).width(120).height(44);
+        controls.add(amountField).width(clampUiSize(120)).height(44);
         body.add(controls).growX().padTop(gap.lg).row();
 
         var presets = new Table();
@@ -2700,7 +2699,7 @@ var ModEngineUI = (function(){
                 presets.add(textButton(value >= 999999 ? "MAX" : ("x" + value), s.action, function(){
                     state.quickItemAmount = value;
                     amountField.setText(String(value));
-                })).height(38).minWidth(86).padRight(gap.sm);
+                })).height(clampUiSize(38)).minWidth(86).padRight(gap.sm);
             })(presetValues[pi]);
         }
         body.add(presets).left().padTop(gap.sm).row();
@@ -2712,8 +2711,8 @@ var ModEngineUI = (function(){
             (function(item, index){
                 var button = new Button(isSelected(item) ? s.activeTile : s.tile);
                 button.top();
-                button.image(contentDrawable(item, getIcon("box", "database"))).size(34).color(contentColor(item, theme.cyan)).padTop(gap.sm).row();
-                button.add(wrappedLabel(String(item.localizedName).toUpperCase(), s.labelMuted, 0.56)).width(92).center().padTop(gap.xs);
+                button.image(contentDrawable(item, getIcon("box", "database"))).size(clampUiSize(34)).color(contentColor(item, theme.cyan)).padTop(gap.sm).row();
+                button.add(wrappedLabel(String(item.localizedName).toUpperCase(), s.labelMuted, 0.56)).width(clampUiSize(92)).center().padTop(gap.xs);
                 button.setChecked(isSelected(item));
                 button.clicked(run(function(){
                     var name = String(item.name);
@@ -2733,7 +2732,7 @@ var ModEngineUI = (function(){
 
         var actions = new Table();
         actions.right();
-        actions.add(textButton("CANCEL", s.action, function(){ hideInstant(d); })).height(50).minWidth(150).padRight(gap.md);
+        actions.add(textButton("CANCEL", s.action, function(){ hideInstant(d); })).height(clampUiSize(50)).minWidth(150).padRight(gap.md);
         actions.add(textButton("ADD SELECTED", s.primary, function(){
             var selected = selectedItems();
             if(selected.length === 0){
@@ -2742,7 +2741,7 @@ var ModEngineUI = (function(){
             }
             callHandler("injectItems", {items: selected, amount: Math.max(1, Math.round(state.quickItemAmount))});
             hideInstant(d);
-        })).height(50).minWidth(190);
+        })).height(clampUiSize(50)).minWidth(190);
         body.add(actions).growX().padTop(gap.lg);
 
         refreshSelection();
@@ -2757,12 +2756,12 @@ var ModEngineUI = (function(){
             var row1 = new Table();
             row1.left();
             row1.add(label("GLOBAL_QUANTITY", s.labelMuted, 0.72)).left().padRight(gap.lg);
-            row1.add(textButton("-", s.action, function(){ state.amount = Math.max(1, state.amount - 100); rebuildContent(); })).size(44).padRight(gap.xs);
+            row1.add(textButton("-", s.action, function(){ state.amount = Math.max(1, state.amount - 100); rebuildContent(); })).size(clampUiSize(44)).padRight(gap.xs);
             var amountField1 = inlineNumberField(state.amount, 1, 999999, s.labelCyan.fontColor, function(num){
                 state.amount = num;
             });
-            row1.add(amountField1).center().width(120);
-            row1.add(textButton("+", s.action, function(){ state.amount = Math.min(999999, state.amount + 100); rebuildContent(); })).size(44).padLeft(gap.xs);
+            row1.add(amountField1).center().width(clampUiSize(120));
+            row1.add(textButton("+", s.action, function(){ state.amount = Math.min(999999, state.amount + 100); rebuildContent(); })).size(clampUiSize(44)).padLeft(gap.xs);
             t.add(row1).left().row();
             var row2 = new Table();
             row2.left();
@@ -2770,22 +2769,22 @@ var ModEngineUI = (function(){
                 if(state.selectedItem != null){
                     callHandler("injectItem", {item: state.selectedItem, amount: state.amount});
                 }
-            })).growX().height(48);
+            })).growX().height(clampUiSize(48));
             t.add(row2).growX().padTop(gap.sm);
         }else{
             t.add(label("GLOBAL_QUANTITY", s.labelMuted, 0.72)).left().padRight(gap.lg);
-            t.add(textButton("-", s.action, function(){ state.amount = Math.max(1, state.amount - 100); rebuildContent(); })).size(44).padRight(gap.xs);
+            t.add(textButton("-", s.action, function(){ state.amount = Math.max(1, state.amount - 100); rebuildContent(); })).size(clampUiSize(44)).padRight(gap.xs);
             var amountField2 = inlineNumberField(state.amount, 1, 999999, s.labelCyan.fontColor, function(num){
                 state.amount = num;
             });
-            t.add(amountField2).center().width(120);
-            t.add(textButton("+", s.action, function(){ state.amount = Math.min(999999, state.amount + 100); rebuildContent(); })).size(44).padLeft(gap.xs).padRight(gap.lg);
+            t.add(amountField2).center().width(clampUiSize(120));
+            t.add(textButton("+", s.action, function(){ state.amount = Math.min(999999, state.amount + 100); rebuildContent(); })).size(clampUiSize(44)).padLeft(gap.xs).padRight(gap.lg);
             t.add(label("|", s.labelDim, 1)).padRight(gap.lg);
             t.add(textButton("INJECT", s.primary, function(){
                 if(state.selectedItem != null){
                     callHandler("injectItem", {item: state.selectedItem, amount: state.amount});
                 }
-            })).height(48).minWidth(160);
+            })).height(clampUiSize(48)).minWidth(160);
         }
         return t;
     }
@@ -2823,7 +2822,7 @@ var ModEngineUI = (function(){
         grid.left().top();
         var cols = state.compact ? 3 : (ArcCore.graphics.getWidth() > 1500 ? 6 : 5);
         for(var i = 0; i < items.length; i++){
-            grid.add(makeItemButton(items[i])).minWidth(150).height(isExternalModContent(items[i]) ? 158 : 138).growX().padRight(gap.md).padBottom(gap.md);
+            grid.add(makeItemButton(items[i])).minWidth(clampUiSize(150)).height(isExternalModContent(items[i]) ? 158 : 138).growX().padRight(gap.md).padBottom(gap.md);
             if((i + 1) % cols === 0) grid.row();
         }
         if(items.length === 0){
@@ -2849,7 +2848,7 @@ var ModEngineUI = (function(){
         storedLine.add(storedTextLine).growX().row();
         var storedBar = new Table();
         storedBar.background(dynamicProgressDrawable(function(){ return storedRatio; }, function(){ return theme.gold; }));
-        storedLine.add(storedBar).growX().height(7).padTop(gap.sm);
+        storedLine.add(storedBar).growX().height(clampUiSize(7)).padTop(gap.sm);
         status.add(storedLine).growX().padTop(gap.lg).row();
 
         var flowRatio = 0;
@@ -2864,7 +2863,7 @@ var ModEngineUI = (function(){
         flowLine.add(flowTextLine).growX().row();
         var flowBar = new Table();
         flowBar.background(dynamicProgressDrawable(function(){ return flowRatio; }, function(){ return flowIsNegative ? theme.red : theme.cyan; }));
-        flowLine.add(flowBar).growX().height(7).padTop(gap.sm);
+        flowLine.add(flowBar).growX().height(clampUiSize(7)).padTop(gap.sm);
         status.add(flowLine).growX().padTop(gap.lg);
 
         function refreshItemStatus(){
@@ -2906,7 +2905,7 @@ var ModEngineUI = (function(){
                 rebuildContent(false);
             });
             quickItemsCompact.setChecked(state.quickItemsQuickAccess);
-            commandRow.add(quickItemsCompact).height(46).minWidth(180).padRight(gap.md).padBottom(gap.md);
+            commandRow.add(quickItemsCompact).height(clampUiSize(46)).minWidth(180).padRight(gap.md).padBottom(gap.md);
         }else{
             addCommandButton(commandRow, "FILL_ALL_ITEMS", "fillAllItems");
             addCommandButton(commandRow, "CLEAR_CORE_STORAGE", "clearCoreStorage");
@@ -2916,7 +2915,7 @@ var ModEngineUI = (function(){
                 rebuildContent(false);
             });
             quickItems.setChecked(state.quickItemsQuickAccess);
-            commandRow.add(quickItems).height(46).minWidth(180).padRight(gap.md).padBottom(gap.md);
+            commandRow.add(quickItems).height(clampUiSize(46)).minWidth(180).padRight(gap.md).padBottom(gap.md);
         }
         commands.add(commandRow).left().padTop(gap.lg);
 
@@ -2924,14 +2923,14 @@ var ModEngineUI = (function(){
             bottom.add(status).growX().row();
             bottom.add(commands).growX().padTop(gap.lg);
         }else{
-            bottom.add(status).width(360).height(180).padRight(gap.lg);
-            bottom.add(commands).growX().height(180);
+            bottom.add(status).width(clampUiSize(360)).height(180).padRight(gap.lg);
+            bottom.add(commands).growX().height(clampUiSize(180));
         }
         parent.add(bottom).growX().padTop(gap.xl).row();
     }
 
     function addCommandButton(table, text, command){
-        table.add(textButton(text, getStyles().action, function(){ callHandler("command", {command: command}); })).height(46).minWidth(180).padRight(gap.md).padBottom(gap.md);
+        table.add(textButton(text, getStyles().action, function(){ callHandler("command", {command: command}); })).height(clampUiSize(46)).minWidth(180).padRight(gap.md).padBottom(gap.md);
     }
 
     function getUnits(){
@@ -3043,7 +3042,7 @@ var ModEngineUI = (function(){
                     rebuildContent();
                 });
                 b.setChecked(state.tier === tier);
-                tabs.add(b).width(60).height(44).padRight(gap.sm);
+                tabs.add(b).width(clampUiSize(60)).height(44).padRight(gap.sm);
             })(i);
         }
         return tabs;
@@ -3065,11 +3064,11 @@ var ModEngineUI = (function(){
             else callHandler("spawnUnit", {unit: unit, contentName: String(unit.name)});
             rebuildContent();
         }));
-        b.image(contentDrawable(unit, getIcon("units", "factory"))).size(64).padTop(gap.md).row();
+        b.image(contentDrawable(unit, getIcon("units", "factory"))).size(clampUiSize(64)).padTop(gap.md).row();
         b.add(label(String(unit.localizedName).toUpperCase(), s.labelMuted, 0.72)).center().padTop(gap.md);
         if(isExternalModContent(unit)){
             b.row();
-            b.add(wrappedLabel(String(unit.name), s.labelCyan, 0.5)).width(122).center().padTop(gap.xs);
+            b.add(wrappedLabel(String(unit.name), s.labelCyan, 0.5)).width(clampUiSize(122)).center().padTop(gap.xs);
         }
         return b;
     }
@@ -3096,7 +3095,7 @@ var ModEngineUI = (function(){
                     rebuildContent(false);
                 });
                 b.setChecked(state.unitPlanetFilter === value);
-                controls.add(b).height(42).minWidth(value === "mods" ? 100 : 120).padRight(gap.sm);
+                controls.add(b).height(clampUiSize(42)).minWidth(value === "mods" ? 100 : 120).padRight(gap.sm);
                 if(state.compact && (fi + 1) % 2 === 0) controls.row();
             })(factionButtons[fi][0], factionButtons[fi][1]);
         }
@@ -3109,14 +3108,14 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         teamButton.setChecked(state.unitSpawnEnemy);
-        spawnControls.add(teamButton).height(42).minWidth(150).padRight(gap.md).colspan(state.compact ? 5 : 1);
+        spawnControls.add(teamButton).height(clampUiSize(42)).minWidth(150).padRight(gap.md).colspan(state.compact ? 5 : 1);
         if(state.compact) spawnControls.row();
-        spawnControls.add(textButton("-", s.action, function(){ state.unitSpawnAmount = Math.max(1, state.unitSpawnAmount - 1); rebuildContent(); })).size(42).padRight(gap.xs);
-        spawnControls.add(label("x" + state.unitSpawnAmount, s.labelCyan, 1.0)).width(64).center();
-        spawnControls.add(textButton("+", s.action, function(){ state.unitSpawnAmount = Math.min(100, state.unitSpawnAmount + 1); rebuildContent(); })).size(42).padLeft(gap.xs).padRight(gap.md);
+        spawnControls.add(textButton("-", s.action, function(){ state.unitSpawnAmount = Math.max(1, state.unitSpawnAmount - 1); rebuildContent(); })).size(clampUiSize(42)).padRight(gap.xs);
+        spawnControls.add(label("x" + state.unitSpawnAmount, s.labelCyan, 1.0)).width(clampUiSize(64)).center();
+        spawnControls.add(textButton("+", s.action, function(){ state.unitSpawnAmount = Math.min(100, state.unitSpawnAmount + 1); rebuildContent(); })).size(clampUiSize(42)).padLeft(gap.xs).padRight(gap.md);
         spawnControls.add(textButton("SPAWN", s.primary, function(){
             if(state.selectedUnit != null) callHandler("spawnUnit", {unit: state.selectedUnit, contentName: String(state.selectedUnit.name), amount: state.unitSpawnAmount, enemy: state.unitSpawnEnemy});
-        })).height(42).minWidth(140);
+        })).height(clampUiSize(42)).minWidth(140);
         main.add(spawnControls).left().padTop(gap.sm).row();
 
         // A fixed-height horizontal slot keeps the unit grid stationary while switching sources.
@@ -3133,11 +3132,11 @@ var ModEngineUI = (function(){
                 modFilterPane.setFadeScrollBars(false);
                 modFilterPane.setOverscroll(false, false);
             }catch(eFilterPane){}
-            modFilterSlot.add(modFilterPane).growX().height(48);
+            modFilterSlot.add(modFilterPane).growX().height(clampUiSize(48));
         }else{
-            modFilterSlot.add().growX().height(48);
+            modFilterSlot.add().growX().height(clampUiSize(48));
         }
-        main.add(modFilterSlot).growX().height(56).padTop(gap.sm).row();
+        main.add(modFilterSlot).growX().height(clampUiSize(56)).padTop(gap.sm).row();
 
         var filtered = orderedUnitsByTier(state.unitPlanetFilter, state.tier);
         if((state.selectedUnit == null || !arrayContainsRef(filtered, state.selectedUnit)) && filtered.length > 0) state.selectedUnit = filtered[0];
@@ -3149,7 +3148,7 @@ var ModEngineUI = (function(){
         for(var u = 0; u < filtered.length; u++){
             (function(unit, index){
                 var b = makeUnitButton(unit, function(selected){});
-                grid.add(b).minWidth(132).height(isExternalModContent(unit) ? 148 : 126).growX().padRight(gap.md).padBottom(gap.md);
+                grid.add(b).minWidth(clampUiSize(132)).height(isExternalModContent(unit) ? 148 : 126).growX().padRight(gap.md).padBottom(gap.md);
                 if((index + 1) % cols === 0) grid.row();
             })(filtered[u], u);
         }
@@ -3212,12 +3211,12 @@ var ModEngineUI = (function(){
         var icon = contentDrawable(unitType, getIcon("units", "factory"));
         var hp = unitStatMax(unitType, null);
         var dps = unitStatDps(unitType);
-        p.image(icon).size(110).padBottom(gap.lg).row();
+        p.image(icon).size(clampUiSize(110)).padBottom(gap.lg).row();
         p.add(label(name, s.labelCyan, 1.08)).center().row();
         p.add(label("SPAWN PREVIEW", s.labelMuted, 0.74)).center().padTop(gap.sm).row();
         var gauges = new Table();
-        gauges.add(makeGauge(Math.round(hp) + "", "BASE_HP", 1, theme.green)).size(132).padRight(gap.lg);
-        gauges.add(makeGauge(Math.round(dps) + "", "EST_DPS", Math.min(1, dps / 1000), theme.red)).size(132);
+        gauges.add(makeGauge(Math.round(hp) + "", "BASE_HP", 1, theme.green)).size(clampUiSize(132)).padRight(gap.lg);
+        gauges.add(makeGauge(Math.round(dps) + "", "EST_DPS", Math.min(1, dps / 1000), theme.red)).size(clampUiSize(132));
         p.add(gauges).center().padTop(gap.xl).row();
         p.add(metricLine("MOV_SPEED", ((unitType != null && unitType.speed != null) ? unitType.speed.toFixed(2) : "0.00") + " T/SEC", Math.min(1, (unitType != null ? unitType.speed : 0) / 10), theme.cyan)).growX().padTop(gap.lg).row();
         p.add(metricLine("BURST_DMG", String(Math.round(unitStatBurst(unitType))), Math.min(1, unitStatBurst(unitType) / 1000), theme.red)).growX().padTop(gap.lg).row();
@@ -3246,7 +3245,7 @@ var ModEngineUI = (function(){
             try{ hide(); }catch(eHide){}
             try{ Vars.ui.showInfoToast("TAP WORLD TO PLACE SPAWN POINT", 3); }catch(eToast){}
         });
-        spawnPosRow.add(spawnBtn).height(34).growX().padRight(gap.sm);
+        spawnPosRow.add(spawnBtn).height(clampUiSize(34)).growX().padRight(gap.sm);
         if(hasSpawnMarker){
             spawnPosRow.add(textButton("CLEAR", s.danger, function(){
                 state.spawnMarkerActive = false;
@@ -3254,7 +3253,7 @@ var ModEngineUI = (function(){
                 state.spawnMarkerX = 0;
                 state.spawnMarkerY = 0;
                 rebuildContent(false);
-            })).height(34).width(68);
+            })).height(clampUiSize(34)).width(68);
         }
         p.add(spawnPosRow).growX().padTop(gap.sm).row();
 
@@ -3267,7 +3266,7 @@ var ModEngineUI = (function(){
         var hpField = inlineNumberField(state.unitCustomHealth != null ? state.unitCustomHealth : Math.round(hp), 1, 999999, s.labelCyan.fontColor, function(num){
             state.unitCustomHealth = num;
         });
-        hpRow.add(hpField).width(110).right();
+        hpRow.add(hpField).width(clampUiSize(110)).right();
         customPanel.add(hpRow).growX().padTop(gap.sm).row();
 
         var shieldRow = new Table();
@@ -3276,7 +3275,7 @@ var ModEngineUI = (function(){
         var shieldField = inlineNumberField(state.unitCustomShield != null ? state.unitCustomShield : 0, 0, 999999, s.labelCyan.fontColor, function(num){
             state.unitCustomShield = num;
         });
-        shieldRow.add(shieldField).width(110).right();
+        shieldRow.add(shieldField).width(clampUiSize(110)).right();
         customPanel.add(shieldRow).growX().padTop(gap.sm).row();
 
         var damageBase = unitStatBurst(unitType);
@@ -3286,7 +3285,7 @@ var ModEngineUI = (function(){
         var damageField = inlineNumberField(state.unitCustomDamage != null ? state.unitCustomDamage : Math.round(damageBase), 0, 999999, s.labelCyan.fontColor, function(num){
             state.unitCustomDamage = num;
         });
-        damageRow.add(damageField).width(110).right();
+        damageRow.add(damageField).width(clampUiSize(110)).right();
         customPanel.add(damageRow).growX().padTop(gap.sm).row();
 
         customPanel.add(textButton("APPLY_TO_" + name, s.primary, function(){
@@ -3298,7 +3297,7 @@ var ModEngineUI = (function(){
                 shield: state.unitCustomShield != null ? state.unitCustomShield : 0,
                 damage: state.unitCustomDamage != null ? state.unitCustomDamage : Math.round(damageBase)
             });
-        })).growX().height(44).padTop(gap.md);
+        })).growX().height(clampUiSize(44)).padTop(gap.md);
 
         p.add(customPanel).growX().padTop(gap.lg);
         return p;
@@ -3314,7 +3313,7 @@ var ModEngineUI = (function(){
 
         var head = new Table();
         head.left().top();
-        head.image(icon).size(64).padRight(gap.md);
+        head.image(icon).size(clampUiSize(64)).padRight(gap.md);
         var headText = new Table();
         headText.left();
         headText.add(label(name, s.labelCyan, 0.96)).left().row();
@@ -3360,8 +3359,8 @@ var ModEngineUI = (function(){
         dpsGauge.add(dpsArc);
         dpsGauge.add(dpsText);
 
-        gauges.add(hpGauge).size(86).padRight(gap.md);
-        gauges.add(dpsGauge).size(86);
+        gauges.add(hpGauge).size(clampUiSize(86)).padRight(gap.md);
+        gauges.add(dpsGauge).size(clampUiSize(86));
         p.add(gauges).center().padTop(gap.md).row();
 
         var moveLine = metricLine("MOV_SPEED", ((unitType != null && unitType.speed != null) ? unitType.speed.toFixed(2) : "0.00") + " T/SEC", Math.min(1, (unitType != null ? unitType.speed : 0) / 10), theme.cyan);
@@ -3371,10 +3370,10 @@ var ModEngineUI = (function(){
 
         var actions = new Table();
         actions.left();
-        actions.add(textButton("TELEPORT", s.primary, function(){ callHandler("unitAction", {action: "teleport", unitType: unitType, unit: worldUnit}); })).height(40).growX().padRight(gap.xs);
-        actions.add(textButton("CLONE", s.action, function(){ callHandler("unitAction", {action: "clone", unitType: unitType, unit: worldUnit}); })).height(40).growX().row();
-        actions.add(textButton("CHANGE_TEAM", s.action, function(){ callHandler("unitAction", {action: "team", unitType: unitType, unit: worldUnit}); })).height(40).growX().colspan(2).padTop(gap.xs).row();
-        actions.add(textButton("DESTRUCT_UNIT", s.danger, function(){ callHandler("unitAction", {action: "destruct", unitType: unitType, unit: worldUnit}); })).height(40).growX().colspan(2).padTop(gap.sm);
+        actions.add(textButton("TELEPORT", s.primary, function(){ callHandler("unitAction", {action: "teleport", unitType: unitType, unit: worldUnit}); })).height(clampUiSize(40)).growX().padRight(gap.xs);
+        actions.add(textButton("CLONE", s.action, function(){ callHandler("unitAction", {action: "clone", unitType: unitType, unit: worldUnit}); })).height(clampUiSize(40)).growX().row();
+        actions.add(textButton("CHANGE_TEAM", s.action, function(){ callHandler("unitAction", {action: "team", unitType: unitType, unit: worldUnit}); })).height(clampUiSize(40)).growX().colspan(2).padTop(gap.xs).row();
+        actions.add(textButton("DESTRUCT_UNIT", s.danger, function(){ callHandler("unitAction", {action: "destruct", unitType: unitType, unit: worldUnit}); })).height(clampUiSize(40)).growX().colspan(2).padTop(gap.sm);
         p.add(actions).growX().padTop(gap.md);
 
         var detailsUpdateTimer = 0;
@@ -3412,7 +3411,7 @@ var ModEngineUI = (function(){
         var rootPanel = panel(s.d.panelStrong, gap.xl);
         var head = new Table();
         head.left().top();
-        head.image(contentDrawable(unitType, getIcon("units", "factory"))).size(82).padRight(gap.lg);
+        head.image(contentDrawable(unitType, getIcon("units", "factory"))).size(clampUiSize(82)).padRight(gap.lg);
         var headCopy = new Table();
         headCopy.left();
         var unitName = unitType == null ? "UNKNOWN UNIT" : String(unitType.localizedName).toUpperCase();
@@ -3435,9 +3434,9 @@ var ModEngineUI = (function(){
             row.add(valueLabel).right();
             return row;
         }
-        stats.add(dialogStat("WORLD POSITION", positionValue)).growX().height(52).row();
-        stats.add(dialogStat("HEALTH", healthValue)).growX().height(52).padTop(gap.xs).row();
-        stats.add(dialogStat("ESTIMATED DAMAGE", damageValue)).growX().height(52).padTop(gap.xs);
+        stats.add(dialogStat("WORLD POSITION", positionValue)).growX().height(clampUiSize(52)).row();
+        stats.add(dialogStat("HEALTH", healthValue)).growX().height(clampUiSize(52)).padTop(gap.xs).row();
+        stats.add(dialogStat("ESTIMATED DAMAGE", damageValue)).growX().height(clampUiSize(52)).padTop(gap.xs);
         rootPanel.add(stats).growX().padTop(gap.lg).row();
 
         var statEditor = panel(s.d.panel, gap.md);
@@ -3446,12 +3445,12 @@ var ModEngineUI = (function(){
         statFields.left();
         statFields.add(label("HEALTH", s.labelMuted, 0.7)).left().padRight(gap.sm);
         var unitHealthField = inlineNumberField(Math.round(unitStatMax(unitType, worldUnit)), 1, 999999999, s.labelCyan.fontColor, function(){});
-        statFields.add(unitHealthField).width(130).padRight(gap.lg);
+        statFields.add(unitHealthField).width(clampUiSize(130)).padRight(gap.lg);
         statFields.add(label("SHIELD", s.labelMuted, 0.7)).left().padRight(gap.sm);
         var initialShield = 0;
         try{ initialShield = Math.round(worldUnit.shield); }catch(eShield){}
         var unitShieldField = inlineNumberField(initialShield, 0, 999999999, s.labelCyan.fontColor, function(){});
-        statFields.add(unitShieldField).width(130);
+        statFields.add(unitShieldField).width(clampUiSize(130));
         statEditor.add(statFields).left().padTop(gap.md).row();
         statEditor.add(textButton("APPLY HEALTH & SHIELD", s.primary, function(){
             var hp = parseInt(String(unitHealthField.getText()), 10);
@@ -3459,13 +3458,13 @@ var ModEngineUI = (function(){
             if(isNaN(hp)) hp = Math.round(unitStatMax(unitType, worldUnit));
             if(isNaN(shield)) shield = 0;
             callHandler("unitAction", {action: "setStats", unit: worldUnit, health: hp, shield: shield});
-        })).height(44).growX().padTop(gap.md);
+        })).height(clampUiSize(44)).growX().padTop(gap.md);
         rootPanel.add(statEditor).growX().padTop(gap.lg).row();
 
         var markerPanel = panel(s.d.panelCyan, gap.md);
         var markerHead = new Table();
         markerHead.left();
-        markerHead.image(getIcon("flag", "map")).size(22).color(theme.cyan).padRight(gap.sm);
+        markerHead.image(getIcon("flag", "map")).size(clampUiSize(22)).color(theme.cyan).padRight(gap.sm);
         markerHead.add(label("TARGET MARKER", s.labelCyan, 0.86)).left().growX();
         var markerStatus = label("NOT SET", s.labelDim, 0.72);
         markerHead.add(markerStatus).right();
@@ -3479,29 +3478,29 @@ var ModEngineUI = (function(){
             d.hide();
             hide();
         });
-        markerActions.add(armButton).height(44).growX().padRight(gap.sm);
+        markerActions.add(armButton).height(clampUiSize(44)).growX().padRight(gap.sm);
         var markerTeleport = textButton("MOVE UNIT TO MARKER", s.primary, function(){
             callHandler("unitAction", {action: "moveToMarker", unit: worldUnit});
         });
         markerTeleport.setDisabled(!state.markerActive);
-        markerActions.add(markerTeleport).height(44).growX().padRight(gap.sm);
+        markerActions.add(markerTeleport).height(clampUiSize(44)).growX().padRight(gap.sm);
         var clearMarker = textButton("REMOVE MARKER", s.danger, function(){
             callHandler("unitAction", {action: "clearMarker"});
         });
         clearMarker.setDisabled(!state.markerActive && !state.markerArmed);
-        markerActions.add(clearMarker).height(44).minWidth(135);
+        markerActions.add(clearMarker).height(clampUiSize(44)).minWidth(135);
         markerPanel.add(markerActions).growX().padTop(gap.md);
         rootPanel.add(markerPanel).growX().padTop(gap.lg).row();
 
         var actions = new Table();
         actions.left();
-        actions.add(textButton("TELEPORT TO PLAYER", s.primary, function(){ callHandler("unitAction", {action: "teleport", unit: worldUnit}); })).height(46).growX().padRight(gap.sm);
-        actions.add(textButton("CLONE UNIT", s.action, function(){ callHandler("unitAction", {action: "clone", unit: worldUnit}); })).height(46).growX().row();
-        actions.add(textButton("CHANGE TEAM", s.action, function(){ callHandler("unitAction", {action: "team", unit: worldUnit}); })).height(46).growX().colspan(2).padTop(gap.sm).row();
+        actions.add(textButton("TELEPORT TO PLAYER", s.primary, function(){ callHandler("unitAction", {action: "teleport", unit: worldUnit}); })).height(clampUiSize(46)).growX().padRight(gap.sm);
+        actions.add(textButton("CLONE UNIT", s.action, function(){ callHandler("unitAction", {action: "clone", unit: worldUnit}); })).height(clampUiSize(46)).growX().row();
+        actions.add(textButton("CHANGE TEAM", s.action, function(){ callHandler("unitAction", {action: "team", unit: worldUnit}); })).height(clampUiSize(46)).growX().colspan(2).padTop(gap.sm).row();
         actions.add(textButton("DESTROY UNIT", s.danger, function(){
             callHandler("unitAction", {action: "destruct", unit: worldUnit});
             d.hide();
-        })).height(48).growX().colspan(2).padTop(gap.md);
+        })).height(clampUiSize(48)).growX().colspan(2).padTop(gap.md);
         rootPanel.add(actions).growX().padTop(gap.lg);
 
         var updateTimer = 0;
@@ -3535,7 +3534,7 @@ var ModEngineUI = (function(){
         var dialogWidth = Math.min(760, Math.max(420, ArcCore.graphics.getWidth() - 100));
         var dialogHeight = Math.min(720, Math.max(480, ArcCore.graphics.getHeight() - 120));
         d.cont.add(pane).width(dialogWidth).height(dialogHeight);
-        d.buttons.add(textButton("CLOSE", s.action, function(){ d.hide(); })).height(48).width(180).padTop(gap.md);
+        d.buttons.add(textButton("CLOSE", s.action, function(){ d.hide(); })).height(clampUiSize(48)).width(180).padTop(gap.md);
         d.show();
     }
 
@@ -3563,7 +3562,7 @@ var ModEngineUI = (function(){
         var rootPanel = panel(s.d.panelStrong, gap.xl);
         var head = new Table();
         head.left();
-        head.image(getIcon("units", "factory")).size(54).color(theme.cyan).padRight(gap.lg);
+        head.image(getIcon("units", "factory")).size(clampUiSize(54)).color(theme.cyan).padRight(gap.lg);
         var headCopy = new Table();
         headCopy.left();
         headCopy.add(label("GROUP CONTROL", s.labelCyan, 1.18)).left().row();
@@ -3581,8 +3580,8 @@ var ModEngineUI = (function(){
         var dpsSummary = panel(s.d.panel, gap.md);
         dpsSummary.add(label("ESTIMATED DPS", s.labelMuted, 0.7)).left().row();
         dpsSummary.add(groupDpsLabel).left().padTop(gap.xs);
-        summary.add(healthSummary).growX().height(82).padRight(gap.sm);
-        summary.add(dpsSummary).growX().height(82);
+        summary.add(healthSummary).growX().height(clampUiSize(82)).padRight(gap.sm);
+        summary.add(dpsSummary).growX().height(clampUiSize(82));
         rootPanel.add(summary).growX().padTop(gap.lg).row();
 
         var editor = panel(s.d.panel, gap.md);
@@ -3591,10 +3590,10 @@ var ModEngineUI = (function(){
         fields.left();
         fields.add(label("HEALTH EACH", s.labelMuted, 0.68)).padRight(gap.sm);
         var healthField = inlineNumberField(Math.round(groupUnits[0].maxHealth), 1, 999999999, s.labelCyan.fontColor, function(){});
-        fields.add(healthField).width(130).padRight(gap.lg);
+        fields.add(healthField).width(clampUiSize(130)).padRight(gap.lg);
         fields.add(label("SHIELD EACH", s.labelMuted, 0.68)).padRight(gap.sm);
         var shieldField = inlineNumberField(0, 0, 999999999, s.labelCyan.fontColor, function(){});
-        fields.add(shieldField).width(130);
+        fields.add(shieldField).width(clampUiSize(130));
         editor.add(fields).left().padTop(gap.md).row();
         editor.add(textButton("APPLY TO GROUP", s.primary, function(){
             var hp = parseInt(String(healthField.getText()), 10);
@@ -3602,7 +3601,7 @@ var ModEngineUI = (function(){
             if(isNaN(hp)) hp = 1;
             if(isNaN(shield)) shield = 0;
             callHandler("unitAction", {action: "groupSetStats", units: groupUnits, health: hp, shield: shield});
-        })).height(44).growX().padTop(gap.md);
+        })).height(clampUiSize(44)).growX().padTop(gap.md);
         rootPanel.add(editor).growX().padTop(gap.lg).row();
 
         var markerPanel = panel(s.d.panelCyan, gap.md);
@@ -3615,24 +3614,24 @@ var ModEngineUI = (function(){
             callHandler("unitAction", {action: "armMarker"});
             d.hide();
             hide();
-        })).height(44).growX().padRight(gap.sm);
+        })).height(clampUiSize(44)).growX().padRight(gap.sm);
         var moveGroup = textButton("MOVE GROUP TO MARKER", s.primary, function(){
             callHandler("unitAction", {action: "groupMoveToMarker", units: groupUnits});
         });
         moveGroup.setDisabled(!state.markerActive);
-        markerActions.add(moveGroup).height(44).growX().padRight(gap.sm);
+        markerActions.add(moveGroup).height(clampUiSize(44)).growX().padRight(gap.sm);
         var clearGroupMarker = textButton("REMOVE MARKER", s.danger, function(){ callHandler("unitAction", {action: "clearMarker"}); });
         clearGroupMarker.setDisabled(!state.markerActive && !state.markerArmed);
-        markerActions.add(clearGroupMarker).height(44).minWidth(135);
+        markerActions.add(clearGroupMarker).height(clampUiSize(44)).minWidth(135);
         markerPanel.add(markerActions).growX().padTop(gap.md);
         rootPanel.add(markerPanel).growX().padTop(gap.lg).row();
 
         var actions = new Table();
         actions.left();
-        actions.add(textButton("TELEPORT GROUP TO PLAYER", s.primary, function(){ callHandler("unitAction", {action: "groupTeleport", units: groupUnits}); })).height(46).growX().padRight(gap.sm);
-        actions.add(textButton("CLONE GROUP", s.action, function(){ callHandler("unitAction", {action: "groupClone", units: groupUnits}); })).height(46).growX().row();
-        actions.add(textButton("CHANGE GROUP TEAM", s.action, function(){ callHandler("unitAction", {action: "groupTeam", units: groupUnits}); })).height(46).growX().colspan(2).padTop(gap.sm).row();
-        actions.add(textButton("DESTROY GROUP", s.danger, function(){ callHandler("unitAction", {action: "groupDestruct", units: groupUnits}); d.hide(); })).height(48).growX().colspan(2).padTop(gap.md);
+        actions.add(textButton("TELEPORT GROUP TO PLAYER", s.primary, function(){ callHandler("unitAction", {action: "groupTeleport", units: groupUnits}); })).height(clampUiSize(46)).growX().padRight(gap.sm);
+        actions.add(textButton("CLONE GROUP", s.action, function(){ callHandler("unitAction", {action: "groupClone", units: groupUnits}); })).height(clampUiSize(46)).growX().row();
+        actions.add(textButton("CHANGE GROUP TEAM", s.action, function(){ callHandler("unitAction", {action: "groupTeam", units: groupUnits}); })).height(clampUiSize(46)).growX().colspan(2).padTop(gap.sm).row();
+        actions.add(textButton("DESTROY GROUP", s.danger, function(){ callHandler("unitAction", {action: "groupDestruct", units: groupUnits}); d.hide(); })).height(clampUiSize(48)).growX().colspan(2).padTop(gap.md);
         rootPanel.add(actions).growX().padTop(gap.lg);
 
         var updateTimer = 0;
@@ -3659,22 +3658,21 @@ var ModEngineUI = (function(){
         pane.setScrollingDisabled(true, false);
         try{ pane.setFadeScrollBars(false); pane.setOverscroll(false, false); }catch(ePane){}
         d.cont.add(pane).width(Math.min(780, Math.max(430, ArcCore.graphics.getWidth() - 100))).height(Math.min(720, Math.max(500, ArcCore.graphics.getHeight() - 120)));
-        d.buttons.add(textButton("CLOSE", s.action, function(){ d.hide(); })).height(48).width(180).padTop(gap.md);
+        d.buttons.add(textButton("CLOSE", s.action, function(){ d.hide(); })).height(clampUiSize(48)).width(180).padTop(gap.md);
         d.show();
     }
 
     function gaugeValueScale(text, baseScale){
-        // The base scale shrinks the font so long values fit. We do NOT
-        // multiply by localScale() here — the global Group.setScale on
-        // root already shrinks every label in lockstep with the rest of
-        // the menu.
+        // The base scale shrinks the font so long values fit. We also
+        // multiply by localScale() so the gauge value follows the same
+        // font scale as every other label in the menu.
         var len = String(text).length;
         var s = 1;
         if(len <= 3) s = baseScale;
         else if(len <= 5) s = baseScale * 0.78;
         else if(len <= 7) s = baseScale * 0.6;
         else s = baseScale * 0.48;
-        return s;
+        return s * localScale();
     }
 
     function makeGauge(value, caption, percent, color){
@@ -3817,9 +3815,9 @@ var ModEngineUI = (function(){
             showUnitActionDialog(unit);
         }));
         try{
-            row.image(contentDrawable(unit.type, getIcon("units", "factory"))).size(52).padRight(gap.md);
+            row.image(contentDrawable(unit.type, getIcon("units", "factory"))).size(clampUiSize(52)).padRight(gap.md);
         }catch(e){
-            row.image(getIcon("units", "factory")).size(52).padRight(gap.md);
+            row.image(getIcon("units", "factory")).size(clampUiSize(52)).padRight(gap.md);
         }
         var info = new Table();
         info.left();
@@ -3840,7 +3838,7 @@ var ModEngineUI = (function(){
         var barRatio = 1;
         var barColor = theme.green;
         hpBar.background(dynamicProgressDrawable(function(){ return barRatio; }, function(){ return barColor; }));
-        hpLine.add(hpBar).growX().height(7).padTop(gap.sm);
+        hpLine.add(hpBar).growX().height(clampUiSize(7)).padTop(gap.sm);
         info.add(hpLine).growX().padTop(gap.sm);
         row.add(info).growX();
 
@@ -3910,14 +3908,14 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         deployments.setChecked(state.inspectorBranch === "deployments");
-        row.add(deployments).height(44).minWidth(210).padRight(gap.sm);
+        row.add(deployments).height(clampUiSize(44)).minWidth(210).padRight(gap.sm);
         var mods = textButton("MOD CONTENT REGISTRY", state.inspectorBranch === "mods" ? s.primary : s.action, function(){
             state.inspectorBranch = "mods";
             state.inspectorModPage = 0;
             rebuildContent();
         });
         mods.setChecked(state.inspectorBranch === "mods");
-        row.add(mods).height(44).minWidth(230);
+        row.add(mods).height(clampUiSize(44)).minWidth(230);
         return row;
     }
 
@@ -3927,7 +3925,7 @@ var ModEngineUI = (function(){
         row.background(s.d.panel);
         row.left();
         row.margin(gap.md);
-        try{ row.image(contentDrawable(content, getIcon(kind === "items" ? "box" : "units", "settings"))).size(48).padRight(gap.md); }catch(eIcon){ row.image(getIcon(kind === "items" ? "box" : "units", "settings")).size(42).padRight(gap.md); }
+        try{ row.image(contentDrawable(content, getIcon(kind === "items" ? "box" : "units", "settings"))).size(clampUiSize(48)).padRight(gap.md); }catch(eIcon){ row.image(getIcon(kind === "items" ? "box" : "units", "settings")).size(clampUiSize(42)).padRight(gap.md); }
 
         var info = new Table();
         info.left();
@@ -3940,12 +3938,12 @@ var ModEngineUI = (function(){
             row.add(textButton("INJECT x" + state.amount, s.primary, function(){
                 state.selectedItem = content;
                 callHandler("injectItem", {item: content, contentName: String(content.name), amount: state.amount});
-            })).height(40).minWidth(130).padLeft(gap.md);
+            })).height(clampUiSize(40)).minWidth(130).padLeft(gap.md);
         }else{
             row.add(textButton("SPAWN x" + state.unitSpawnAmount, s.primary, function(){
                 state.selectedUnit = content;
                 callHandler("spawnUnit", {unit: content, contentName: String(content.name), amount: state.unitSpawnAmount, enemy: state.unitSpawnEnemy});
-            })).height(40).minWidth(130).padLeft(gap.md);
+            })).height(clampUiSize(40)).minWidth(130).padLeft(gap.md);
         }
         return row;
     }
@@ -3967,7 +3965,7 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         itemsButton.setChecked(state.inspectorModKind === "items");
-        kindControls.add(itemsButton).height(40).minWidth(120).padRight(gap.sm);
+        kindControls.add(itemsButton).height(clampUiSize(40)).minWidth(120).padRight(gap.sm);
         var unitsButton = textButton("UNITS", state.inspectorModKind === "units" ? s.primary : s.action, function(){
             state.inspectorModKind = "units";
             state.inspectorModFilter = "all";
@@ -3975,21 +3973,21 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         unitsButton.setChecked(state.inspectorModKind === "units");
-        kindControls.add(unitsButton).height(40).minWidth(120);
+        kindControls.add(unitsButton).height(clampUiSize(40)).minWidth(120);
 
         if(state.inspectorModKind === "items"){
             kindControls.add().width(gap.lg);
-            kindControls.add(textButton("-100", s.action, function(){ state.amount = Math.max(1, state.amount - 100); rebuildContent(); })).height(40).minWidth(70).padRight(gap.xs);
-            kindControls.add(label("x" + state.amount, s.labelCyan, 0.88)).width(90).center();
-            kindControls.add(textButton("+100", s.action, function(){ state.amount = Math.min(999999, state.amount + 100); rebuildContent(); })).height(40).minWidth(70);
+            kindControls.add(textButton("-100", s.action, function(){ state.amount = Math.max(1, state.amount - 100); rebuildContent(); })).height(clampUiSize(40)).minWidth(70).padRight(gap.xs);
+            kindControls.add(label("x" + state.amount, s.labelCyan, 0.88)).width(clampUiSize(90)).center();
+            kindControls.add(textButton("+100", s.action, function(){ state.amount = Math.min(999999, state.amount + 100); rebuildContent(); })).height(clampUiSize(40)).minWidth(70);
         }else{
             kindControls.add().width(gap.lg);
             var team = textButton(state.unitSpawnEnemy ? "TEAM: ENEMY" : "TEAM: ALLY", state.unitSpawnEnemy ? s.danger : s.primary, function(){ state.unitSpawnEnemy = !state.unitSpawnEnemy; rebuildContent(); });
             team.setChecked(state.unitSpawnEnemy);
-            kindControls.add(team).height(40).minWidth(145).padRight(gap.sm);
-            kindControls.add(textButton("-", s.action, function(){ state.unitSpawnAmount = Math.max(1, state.unitSpawnAmount - 1); rebuildContent(); })).size(40).padRight(gap.xs);
-            kindControls.add(label("x" + state.unitSpawnAmount, s.labelCyan, 0.88)).width(64).center();
-            kindControls.add(textButton("+", s.action, function(){ state.unitSpawnAmount = Math.min(100, state.unitSpawnAmount + 1); rebuildContent(); })).size(40);
+            kindControls.add(team).height(clampUiSize(40)).minWidth(145).padRight(gap.sm);
+            kindControls.add(textButton("-", s.action, function(){ state.unitSpawnAmount = Math.max(1, state.unitSpawnAmount - 1); rebuildContent(); })).size(clampUiSize(40)).padRight(gap.xs);
+            kindControls.add(label("x" + state.unitSpawnAmount, s.labelCyan, 0.88)).width(clampUiSize(64)).center();
+            kindControls.add(textButton("+", s.action, function(){ state.unitSpawnAmount = Math.min(100, state.unitSpawnAmount + 1); rebuildContent(); })).size(clampUiSize(40));
         }
         registry.add(kindControls).left().padTop(gap.lg).row();
 
@@ -4013,7 +4011,7 @@ var ModEngineUI = (function(){
             grid.left().top();
             var cols = state.compact ? 1 : 2;
             for(var i = start; i < end; i++){
-                grid.add(modRegistryRow(entries[i], state.inspectorModKind)).growX().height(86).minWidth(state.compact ? 0 : 390).padRight(gap.md).padBottom(gap.md);
+                grid.add(modRegistryRow(entries[i], state.inspectorModKind)).growX().height(clampUiSize(86)).minWidth(state.compact ? 0 : 390).padRight(gap.md).padBottom(gap.md);
                 if((i - start + 1) % cols === 0) grid.row();
             }
             registry.add(grid).growX().padTop(gap.lg).row();
@@ -4022,9 +4020,9 @@ var ModEngineUI = (function(){
         if(pages > 1){
             var pager = new Table();
             pager.left();
-            pager.add(textButton("< PREV", s.action, function(){ if(state.inspectorModPage > 0){ state.inspectorModPage--; rebuildContent(); } })).height(40).minWidth(100).padRight(gap.md);
+            pager.add(textButton("< PREV", s.action, function(){ if(state.inspectorModPage > 0){ state.inspectorModPage--; rebuildContent(); } })).height(clampUiSize(40)).minWidth(100).padRight(gap.md);
             pager.add(label("PAGE " + (state.inspectorModPage + 1) + " / " + pages, s.labelMuted, 0.76)).center().growX();
-            pager.add(textButton("NEXT >", s.action, function(){ if(state.inspectorModPage < pages - 1){ state.inspectorModPage++; rebuildContent(); } })).height(40).minWidth(100).padLeft(gap.md);
+            pager.add(textButton("NEXT >", s.action, function(){ if(state.inspectorModPage < pages - 1){ state.inspectorModPage++; rebuildContent(); } })).height(clampUiSize(40)).minWidth(100).padLeft(gap.md);
             registry.add(pager).growX().padTop(gap.md).row();
         }
         parent.add(registry).growX().row();
@@ -4083,7 +4081,7 @@ var ModEngineUI = (function(){
                     rebuildContent();
                 });
                 b.setChecked(state.inspectorTier === tier);
-                controls.add(b).height(40).minWidth(70).padRight(gap.sm);
+                controls.add(b).height(clampUiSize(40)).minWidth(70).padRight(gap.sm);
             })(ti);
         }
         list.add(controls).left().padTop(gap.lg).row();
@@ -4099,7 +4097,7 @@ var ModEngineUI = (function(){
                     rebuildContent();
                 });
                 b.setChecked(state.inspectorCategory === value);
-                catControls.add(b).height(40).minWidth(96).padRight(gap.sm).padTop(gap.sm);
+                catControls.add(b).height(clampUiSize(40)).minWidth(96).padRight(gap.sm).padTop(gap.sm);
             })(cats[ci][0], cats[ci][1]);
         }
         list.add(catControls).left().padTop(gap.sm).row();
@@ -4115,7 +4113,7 @@ var ModEngineUI = (function(){
                     rebuildContent();
                 });
                 b.setChecked(state.inspectorPlanet === value);
-                planetControls.add(b).height(40).minWidth(120).padRight(gap.sm).padTop(gap.sm);
+                planetControls.add(b).height(clampUiSize(40)).minWidth(120).padRight(gap.sm).padTop(gap.sm);
             })(planets[pi2][0], planets[pi2][1]);
         }
         list.add(planetControls).left().padTop(gap.sm).row();
@@ -4162,7 +4160,7 @@ var ModEngineUI = (function(){
             var groupUnitsRef = flat.map(function(f){ return f.entry; });
             groupBar.add(textButton("OPEN GROUP CONTROL: " + currentGroupLabel() + " (" + flat.length + ")", s.primary, function(){
                 showGroupActionDialog(groupUnitsRef, currentGroupLabel());
-            })).growX().height(46);
+            })).growX().height(clampUiSize(46));
             list.add(groupBar).growX().padTop(gap.lg).row();
 
             // Pagination controls - rendered BEFORE the list so you don't have to scroll down every time
@@ -4171,19 +4169,19 @@ var ModEngineUI = (function(){
             var pagerPrev = textButton("< PREV", s.action, function(){
                 if(state.inspectorPage > 0){ state.inspectorPage--; rebuildContent(); }
             });
-            pager.add(pagerPrev).height(40).minWidth(100).padRight(gap.md);
+            pager.add(pagerPrev).height(clampUiSize(40)).minWidth(100).padRight(gap.md);
             pager.add(label("PAGE " + (state.inspectorPage + 1) + " / " + totalPages, s.labelMuted, 0.78)).center().growX();
             var pagerNext = textButton("NEXT >", s.action, function(){
                 if(state.inspectorPage < totalPages - 1){ state.inspectorPage++; rebuildContent(); }
             });
-            pager.add(pagerNext).height(40).minWidth(100).padLeft(gap.md).padRight(gap.lg);
+            pager.add(pagerNext).height(clampUiSize(40)).minWidth(100).padLeft(gap.md).padRight(gap.lg);
             pager.add(label("PER_PAGE", s.labelMuted, 0.74)).padRight(gap.sm);
             var pageSizeField = inlineNumberField(PAGE_SIZE, 1, 1000, s.labelCyan.fontColor, function(num){
                 state.inspectorPageSize = num;
                 state.inspectorPage = 0;
                 rebuildContent();
             });
-            pager.add(pageSizeField).width(90);
+            pager.add(pageSizeField).width(clampUiSize(90));
             list.add(pager).growX().padTop(gap.lg).row();
 
             // Step 2: render ONLY the current page's slice (max 100 cards), not all 1000+ units at once.
@@ -4203,7 +4201,7 @@ var ModEngineUI = (function(){
                     grid.left().top();
                 }
                 var current = item.entry;
-                grid.add(deploymentRow(current)).growX().height(92).minWidth(state.compact ? 0 : 310).padRight(gap.md).padBottom(gap.md);
+                grid.add(deploymentRow(current)).growX().height(clampUiSize(92)).minWidth(state.compact ? 0 : 310).padRight(gap.md).padBottom(gap.md);
                 if((indexInGroup + 1) % cols === 0) grid.row();
                 indexInGroup++;
             }
@@ -4214,11 +4212,11 @@ var ModEngineUI = (function(){
                 pagerBottom.left();
                 pagerBottom.add(textButton("< PREV", s.action, function(){
                     if(state.inspectorPage > 0){ state.inspectorPage--; rebuildContent(); }
-                })).height(40).minWidth(100).padRight(gap.md);
+                })).height(clampUiSize(40)).minWidth(100).padRight(gap.md);
                 pagerBottom.add(label("PAGE " + (state.inspectorPage + 1) + " / " + totalPages, s.labelMuted, 0.78)).center().growX();
                 pagerBottom.add(textButton("NEXT >", s.action, function(){
                     if(state.inspectorPage < totalPages - 1){ state.inspectorPage++; rebuildContent(); }
-                })).height(40).minWidth(100).padLeft(gap.md);
+                })).height(clampUiSize(40)).minWidth(100).padLeft(gap.md);
                 list.add(pagerBottom).growX().padTop(gap.lg).row();
             }
         }
@@ -4273,7 +4271,7 @@ var ModEngineUI = (function(){
         p.add(wrappedLabel(description, s.labelMuted, 0.76)).width(state.compact ? textBlockWidth(420) : 280).left().padTop(gap.md).row();
         p.add(textButton("OPEN_ALIAS", s.action, function(){
             callHandler("command", {command: command});
-        })).height(40).minWidth(140).padTop(gap.md).left();
+        })).height(clampUiSize(40)).minWidth(140).padTop(gap.md).left();
         return p;
     }
 
@@ -4322,7 +4320,7 @@ var ModEngineUI = (function(){
             }
         }));
         try{ d.hidden(run(function(){ state.hotkeyCaptureActive = false; })); }catch(eHidden){}
-        d.buttons.add(textButton("CANCEL", s.action, closeCapture)).height(48).width(170).padTop(gap.md);
+        d.buttons.add(textButton("CANCEL", s.action, closeCapture)).height(clampUiSize(48)).width(170).padTop(gap.md);
         d.show();
         try{
             ArcCore.app.post(run(function(){
@@ -4340,8 +4338,8 @@ var ModEngineUI = (function(){
         row.add(label(text, s.label, 0.84)).left().growX();
         row.add(textButton(hotkeyDisplay(state.hotkeyBinds[bindId]), s.action, function(){
             showHotkeyCapture(bindId, text);
-        })).height(46).minWidth(120).right();
-        parent.add(row).growX().height(72).padTop(gap.md).row();
+        })).height(clampUiSize(46)).minWidth(120).right();
+        parent.add(row).growX().height(clampUiSize(72)).padTop(gap.md).row();
     }
 
     function hotkeyModule(title, code, icon, rows){
@@ -4349,7 +4347,7 @@ var ModEngineUI = (function(){
         var p = panel(s.d.panel, gap.lg);
         var head = new Table();
         head.left();
-        head.image(icon).size(20).color(theme.gold).padRight(gap.sm);
+        head.image(icon).size(clampUiSize(20)).color(theme.gold).padRight(gap.sm);
         head.add(label(title, s.label, 0.96)).left().growX();
         head.add(label(code, s.labelDim, 0.72)).right();
         p.add(head).growX().row();
@@ -4433,7 +4431,7 @@ var ModEngineUI = (function(){
                     hideInstant(d);
                     callHandler("command", {command: "builds:beginSelection", filter: entry[1]});
                 }));
-                grid.add(button).growX().height(94).minWidth(state.compact ? 0 : 310).padRight(gap.sm).padBottom(gap.sm);
+                grid.add(button).growX().height(clampUiSize(94)).minWidth(state.compact ? 0 : 310).padRight(gap.sm).padBottom(gap.sm);
                 if((index + 1) % cols === 0) grid.row();
             })(filters[i], i);
         }
@@ -4445,11 +4443,11 @@ var ModEngineUI = (function(){
             ArcCore.app.post(run(buildSelectionFilterDialog));
         });
         quick.setChecked(state.quickSelectionEnabled);
-        body.add(quick).height(44).growX().padTop(gap.md).row();
+        body.add(quick).height(clampUiSize(44)).growX().padTop(gap.md).row();
         body.add(label("Quick access repeats the last selected filter.", s.labelDim, 0.68)).left().padTop(gap.sm);
 
         d.cont.add(body).width(Math.min(760, Math.max(430, ArcCore.graphics.getWidth() - 100))).height(Math.min(720, Math.max(520, ArcCore.graphics.getHeight() - 120)));
-        d.buttons.add(textButton("CLOSE", s.action, function(){ hideInstant(d); })).height(48).width(180).padTop(gap.md);
+        d.buttons.add(textButton("CLOSE", s.action, function(){ hideInstant(d); })).height(clampUiSize(48)).width(180).padTop(gap.md);
         d.show();
     }
 
@@ -4469,11 +4467,11 @@ var ModEngineUI = (function(){
         right.top().right();
         right.add(pill("SYSTEM_OVERRIDE_ENABLED", s.d.panelGold, s.labelGold)).right().colspan(state.compact ? 1 : 2).padBottom(gap.md).row();
         if(state.compact){
-            right.add(summaryCard("ALL STRUCTURES", String(overview.all), s.labelCyan, s.d.panel)).growX().height(110).row();
-            right.add(summaryCard("ENEMY STRUCTURES", String(overview.enemy), overview.enemy > 0 ? s.labelRed : s.labelCyan, overview.enemy > 0 ? s.d.panelRed : s.d.panel)).growX().height(110).padTop(gap.md);
+            right.add(summaryCard("ALL STRUCTURES", String(overview.all), s.labelCyan, s.d.panel)).growX().height(clampUiSize(110)).row();
+            right.add(summaryCard("ENEMY STRUCTURES", String(overview.enemy), overview.enemy > 0 ? s.labelRed : s.labelCyan, overview.enemy > 0 ? s.d.panelRed : s.d.panel)).growX().height(clampUiSize(110)).padTop(gap.md);
         }else{
-            right.add(summaryCard("ALL STRUCTURES", String(overview.all), s.labelCyan, s.d.panel)).width(clampUiSize(240)).height(110).padRight(gap.md);
-            right.add(summaryCard("ENEMY STRUCTURES", String(overview.enemy), overview.enemy > 0 ? s.labelRed : s.labelCyan, overview.enemy > 0 ? s.d.panelRed : s.d.panel)).width(clampUiSize(220)).height(110);
+            right.add(summaryCard("ALL STRUCTURES", String(overview.all), s.labelCyan, s.d.panel)).width(clampUiSize(240)).height(clampUiSize(110)).padRight(gap.md);
+            right.add(summaryCard("ENEMY STRUCTURES", String(overview.enemy), overview.enemy > 0 ? s.labelRed : s.labelCyan, overview.enemy > 0 ? s.d.panelRed : s.d.panel)).width(clampUiSize(220)).height(clampUiSize(110));
         }
 
         if(state.compact){
@@ -4502,7 +4500,7 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         instantToggle.setChecked(state.buildInstant);
-        instantHead.add(instantToggle).height(46).minWidth(150);
+        instantHead.add(instantToggle).height(clampUiSize(46)).minWidth(150);
         instant.add(instantHead).growX().row();
         instant.add(pill(state.buildInstant ? "INSTANT CONSTRUCTION ACTIVE" : "STANDARD CONSTRUCTION SPEED", state.buildInstant ? s.d.panelCyan : s.d.actionUp, state.buildInstant ? s.labelCyan : s.labelDim)).left().padTop(gap.xl);
 
@@ -4520,7 +4518,7 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         godToggle.setChecked(state.buildGodmode);
-        godHead.add(godToggle).height(46).minWidth(150);
+        godHead.add(godToggle).height(clampUiSize(46)).minWidth(150);
         god.add(godHead).growX().row();
         god.add(pill(state.buildGodmode ? "AUTO-REPAIR ACTIVE / DAMAGED: " + overview.damaged : "AUTO-REPAIR OFFLINE / DAMAGED: " + overview.damaged, state.buildGodmode ? s.d.panelGold : s.d.actionUp, state.buildGodmode ? s.labelGold : s.labelDim)).left().padTop(gap.xl);
 
@@ -4528,8 +4526,8 @@ var ModEngineUI = (function(){
             toggles.add(instant).growX().row();
             toggles.add(god).growX().padTop(gap.lg);
         }else{
-            toggles.add(instant).growX().height(240).padRight(gap.lg);
-            toggles.add(god).growX().height(240);
+            toggles.add(instant).growX().height(clampUiSize(240)).padRight(gap.lg);
+            toggles.add(god).growX().height(clampUiSize(240));
         }
         parent.add(toggles).growX().padTop(gap.xl).row();
 
@@ -4545,7 +4543,7 @@ var ModEngineUI = (function(){
         ];
         var massCols = state.compact ? 1 : (ArcCore.graphics.getWidth() > 1800 ? 5 : 3);
         for(var mi = 0; mi < massCards.length; mi++){
-            mass.add(massCards[mi]).growX().height(158).minWidth(state.compact ? 220 : 0).padRight(gap.lg).padBottom(gap.lg);
+            mass.add(massCards[mi]).growX().height(clampUiSize(158)).minWidth(state.compact ? 220 : 0).padRight(gap.lg).padBottom(gap.lg);
             if((mi + 1) % massCols === 0) mass.row();
         }
         parent.add(mass).growX().padTop(gap.md).row();
@@ -4693,19 +4691,19 @@ var ModEngineUI = (function(){
         var grid = new Table();
         grid.left().top();
         var allButton = new Button(s.tile);
-        allButton.image(getIcon("list", "menu")).size(36).color(theme.cyan).padRight(gap.md);
+        allButton.image(getIcon("list", "menu")).size(clampUiSize(36)).color(theme.cyan).padRight(gap.md);
         allButton.add(label("ALL TYPES (" + builds.length + ")", s.labelCyan, 0.76)).left().growX();
         allButton.clicked(run(function(){ hideInstant(d); showBuildSelectionDialog(builds, true); }));
-        grid.add(allButton).growX().height(58).colspan(state.compact ? 1 : 2).padBottom(gap.sm).row();
+        grid.add(allButton).growX().height(clampUiSize(58)).colspan(state.compact ? 1 : 2).padBottom(gap.sm).row();
         for(var i = 0; i < groups.length; i++){
             (function(group, index){
                 var button = new Button(s.tile);
-                button.image(contentDrawable(group.block, getIcon("edit", "wrench"))).size(36).padRight(gap.md);
+                button.image(contentDrawable(group.block, getIcon("edit", "wrench"))).size(clampUiSize(36)).padRight(gap.md);
                 var name = "BLOCK";
                 try{ name = String(group.block.localizedName).toUpperCase(); }catch(eName){}
                 button.add(wrappedLabel(name + " (" + group.builds.length + ")", s.labelMuted, 0.68)).width(state.compact ? 260 : 245).left().growX();
                 button.clicked(run(function(){ hideInstant(d); showBuildSelectionDialog(group.builds, true); }));
-                grid.add(button).growX().height(58).minWidth(state.compact ? 0 : 300).padRight(gap.sm).padBottom(gap.sm);
+                grid.add(button).growX().height(clampUiSize(58)).minWidth(state.compact ? 0 : 300).padRight(gap.sm).padBottom(gap.sm);
                 if((index + 1) % (state.compact ? 1 : 2) === 0) grid.row();
             })(groups[i], i);
         }
@@ -4714,7 +4712,7 @@ var ModEngineUI = (function(){
         try{ pane.setFadeScrollBars(false); pane.setOverscroll(false, false); }catch(ePane){}
         body.add(pane).growX().height(Math.min(420, 70 + groups.length * 34)).padTop(gap.lg);
         d.cont.add(body).width(Math.min(760, Math.max(440, ArcCore.graphics.getWidth() - 90)));
-        d.buttons.add(textButton("CLOSE", s.action, function(){ hideInstant(d); })).height(48).width(180).padTop(gap.md);
+        d.buttons.add(textButton("CLOSE", s.action, function(){ hideInstant(d); })).height(clampUiSize(48)).width(180).padTop(gap.md);
         d.show();
     }
 
@@ -4742,7 +4740,7 @@ var ModEngineUI = (function(){
         rootPanel.add(sectionHeader("STRUCTURE SELECTION", selected.length + " BLOCKS", getIcon("edit", "wrench"))).growX().row();
         var preview = new Table();
         preview.background(selectionPreviewDrawable(selected));
-        rootPanel.add(preview).growX().height(230).padTop(gap.lg).row();
+        rootPanel.add(preview).growX().height(clampUiSize(230)).padTop(gap.lg).row();
         var damaged = 0;
         var allWalls = true;
         for(var i = 0; i < selected.length; i++){
@@ -4754,12 +4752,12 @@ var ModEngineUI = (function(){
         quick.left();
         quick.add(textButton("HEAL SELECTED (" + damaged + ")", s.primary, function(){
             callHandler("buildSelectionAction", {action: "heal", builds: selected});
-        })).height(46).growX().padRight(gap.sm);
+        })).height(clampUiSize(46)).growX().padRight(gap.sm);
         if(allWalls){
             quick.add(textButton("UPGRADE WALLS", s.action, function(){
                 callHandler("buildSelectionAction", {action: "upgradeWalls", builds: selected});
                 hideInstant(d);
-            })).height(46).growX();
+            })).height(clampUiSize(46)).growX();
         }
         rootPanel.add(quick).growX().padTop(gap.lg).row();
 
@@ -4775,8 +4773,8 @@ var ModEngineUI = (function(){
                 (function(block, index){
                     var button = new Button(s.tile);
                     button.top();
-                    button.image(contentDrawable(block, getIcon("edit", "wrench"))).size(38).padTop(gap.sm).row();
-                    button.add(wrappedLabel(String(block.localizedName).toUpperCase(), s.labelMuted, 0.55)).width(92).center().padTop(gap.xs);
+                    button.image(contentDrawable(block, getIcon("edit", "wrench"))).size(clampUiSize(38)).padTop(gap.sm).row();
+                    button.add(wrappedLabel(String(block.localizedName).toUpperCase(), s.labelMuted, 0.55)).width(clampUiSize(92)).center().padTop(gap.xs);
                     button.clicked(run(function(){
                         selectedReplacement.value = block;
                         for(var bi = 0; bi < replaceButtons.length; bi++) replaceButtons[bi].setChecked(replaceButtons[bi] === button);
@@ -4789,12 +4787,12 @@ var ModEngineUI = (function(){
             var replacePane = new ScrollPane(replacementGrid, s.pane);
             replacePane.setScrollingDisabled(true, false);
             try{ replacePane.setFadeScrollBars(false); replacePane.setOverscroll(false, false); }catch(ePane){}
-            replacementPanel.add(replacePane).growX().height(190).padTop(gap.md).row();
+            replacementPanel.add(replacePane).growX().height(clampUiSize(190)).padTop(gap.md).row();
             replacementPanel.add(textButton("APPLY REPLACEMENT", s.primary, function(){
                 if(selectedReplacement.value == null) return;
                 callHandler("buildSelectionAction", {action: "replace", builds: selected, block: selectedReplacement.value});
                 hideInstant(d);
-            })).height(44).growX().padTop(gap.md);
+            })).height(clampUiSize(44)).growX().padTop(gap.md);
             rootPanel.add(replacementPanel).growX().padTop(gap.lg).row();
         }
 
@@ -4807,12 +4805,12 @@ var ModEngineUI = (function(){
             for(var ai = 0; ai < acceptedItems.length; ai++){
                 (function(item, index){
                     var button = new Button(s.tile);
-                    button.image(contentDrawable(item, getIcon("box", "database"))).size(32).padRight(gap.sm);
+                    button.image(contentDrawable(item, getIcon("box", "database"))).size(clampUiSize(32)).padRight(gap.sm);
                     button.add(label(String(item.localizedName).toUpperCase(), s.labelMuted, 0.58)).left();
                     button.clicked(run(function(){
                         callHandler("buildSelectionAction", {action: "fill", builds: selected, item: item});
                     }));
-                    itemGrid.add(button).height(48).minWidth(150).padRight(gap.sm).padBottom(gap.sm);
+                    itemGrid.add(button).height(clampUiSize(48)).minWidth(150).padRight(gap.sm).padBottom(gap.sm);
                     if((index + 1) % (state.compact ? 2 : 4) === 0) itemGrid.row();
                 })(acceptedItems[ai], ai);
             }
@@ -4827,7 +4825,7 @@ var ModEngineUI = (function(){
         pane.setScrollingDisabled(true, false);
         try{ pane.setFadeScrollBars(false); pane.setOverscroll(false, false); }catch(ePane2){}
         d.cont.add(pane).width(Math.min(920, Math.max(460, ArcCore.graphics.getWidth() - 80))).height(Math.min(820, Math.max(520, ArcCore.graphics.getHeight() - 100)));
-        d.buttons.add(textButton("CLOSE", s.action, function(){ hideInstant(d); })).height(48).width(180).padTop(gap.md);
+        d.buttons.add(textButton("CLOSE", s.action, function(){ hideInstant(d); })).height(clampUiSize(48)).width(180).padTop(gap.md);
         d.show();
     }
 
@@ -4851,14 +4849,14 @@ var ModEngineUI = (function(){
             termActions.add(pill("CONNECTED // V8_PROTOCOL", s.d.panelCyan, s.labelCyan)).left().row();
             var termButtons = new Table();
             termButtons.left();
-            termButtons.add(textButton("CLEAR_LOG", s.action, function(){ callHandler("command", {command: "console:clearLog"}); })).height(42).minWidth(140).padRight(gap.sm);
-            termButtons.add(textButton("EXPORT_TRACE", s.action, function(){ callHandler("command", {command: "console:exportTrace"}); })).height(42).minWidth(160);
+            termButtons.add(textButton("CLEAR_LOG", s.action, function(){ callHandler("command", {command: "console:clearLog"}); })).height(clampUiSize(42)).minWidth(140).padRight(gap.sm);
+            termButtons.add(textButton("EXPORT_TRACE", s.action, function(){ callHandler("command", {command: "console:exportTrace"}); })).height(clampUiSize(42)).minWidth(160);
             termActions.add(termButtons).left().padTop(gap.sm);
             terminal.add(termActions).left().padTop(gap.md).row();
         }else{
             terminalHead.add(pill("CONNECTED // V8_PROTOCOL", s.d.panelCyan, s.labelCyan)).padRight(gap.md);
-            terminalHead.add(textButton("CLEAR_LOG", s.action, function(){ callHandler("command", {command: "console:clearLog"}); })).height(42).minWidth(140).padRight(gap.sm);
-            terminalHead.add(textButton("EXPORT_TRACE", s.action, function(){ callHandler("command", {command: "console:exportTrace"}); })).height(42).minWidth(160);
+            terminalHead.add(textButton("CLEAR_LOG", s.action, function(){ callHandler("command", {command: "console:clearLog"}); })).height(clampUiSize(42)).minWidth(140).padRight(gap.sm);
+            terminalHead.add(textButton("EXPORT_TRACE", s.action, function(){ callHandler("command", {command: "console:exportTrace"}); })).height(clampUiSize(42)).minWidth(160);
             terminal.add(terminalHead).growX().row();
         }
 
@@ -4878,7 +4876,7 @@ var ModEngineUI = (function(){
                 else if(lineText.indexOf("WARN") >= 0) lineStyle = s.labelGold;
                 var outputRow = new Table();
                 outputRow.left().top();
-                outputRow.add(label(String(li + 1), s.labelDim, 0.58)).width(38).right().padRight(gap.sm);
+                outputRow.add(label(String(li + 1), s.labelDim, 0.58)).width(clampUiSize(38)).right().padRight(gap.sm);
                 outputRow.add(wrappedLabel(lineText, lineStyle, 0.78)).width(state.compact ? textBlockWidth(640) : 760).left().growX();
                 logContent.add(outputRow).growX().left().padTop(li === 0 ? 0 : gap.xs).row();
             }
@@ -4931,11 +4929,11 @@ var ModEngineUI = (function(){
             }));
         }catch(eListener){}
         if(state.compact){
-            prompt.add(promptField).growX().height(48).row();
-            prompt.add(textButton("RUN_PROTOCOL", s.primary, runConsoleCommand)).height(48).minWidth(180).padTop(gap.md).left();
+            prompt.add(promptField).growX().height(clampUiSize(48)).row();
+            prompt.add(textButton("RUN_PROTOCOL", s.primary, runConsoleCommand)).height(clampUiSize(48)).minWidth(180).padTop(gap.md).left();
         }else{
-            prompt.add(promptField).growX().height(48).padRight(gap.md);
-            prompt.add(textButton("RUN_PROTOCOL", s.primary, runConsoleCommand)).height(48).minWidth(180);
+            prompt.add(promptField).growX().height(clampUiSize(48)).padRight(gap.md);
+            prompt.add(textButton("RUN_PROTOCOL", s.primary, runConsoleCommand)).height(clampUiSize(48)).minWidth(180);
         }
         terminal.add(prompt).growX().padTop(gap.lg);
 
@@ -4986,14 +4984,14 @@ var ModEngineUI = (function(){
         footer.left();
         if(state.compact){
             footer.add(label("HOTKEY-LINK // ACTIVE", s.labelCyan, 0.84)).left().growX().row();
-            footer.add(textButton("RESET_DEFAULTS", s.danger, function(){ callHandler("command", {command: "hotkeys:resetAll"}); rebuildContent(false); })).height(54).growX().padTop(gap.md).row();
-            footer.add(textButton("SAVE & EXIT", s.primary, function(){ callHandler("command", {command: "hotkeys:saveExit"}); })).height(54).growX().padTop(gap.md);
+            footer.add(textButton("RESET_DEFAULTS", s.danger, function(){ callHandler("command", {command: "hotkeys:resetAll"}); rebuildContent(false); })).height(clampUiSize(54)).growX().padTop(gap.md).row();
+            footer.add(textButton("SAVE & EXIT", s.primary, function(){ callHandler("command", {command: "hotkeys:saveExit"}); })).height(clampUiSize(54)).growX().padTop(gap.md);
             parent.add(footer).growX().padTop(gap.md).row();
         }else{
             footer.add(label("HOTKEY-LINK // ACTIVE", s.labelCyan, 0.84)).left().growX();
-            footer.add(textButton("RESET_DEFAULTS", s.danger, function(){ callHandler("command", {command: "hotkeys:resetAll"}); rebuildContent(false); })).height(54).minWidth(220).padRight(gap.md);
-            footer.add(textButton("SAVE & EXIT", s.primary, function(){ callHandler("command", {command: "hotkeys:saveExit"}); })).height(54).minWidth(180);
-            parent.add(footer).growX().height(74).padTop(gap.md).row();
+            footer.add(textButton("RESET_DEFAULTS", s.danger, function(){ callHandler("command", {command: "hotkeys:resetAll"}); rebuildContent(false); })).height(clampUiSize(54)).minWidth(220).padRight(gap.md);
+            footer.add(textButton("SAVE & EXIT", s.primary, function(){ callHandler("command", {command: "hotkeys:saveExit"}); })).height(clampUiSize(54)).minWidth(180);
+            parent.add(footer).growX().height(clampUiSize(74)).padTop(gap.md).row();
         }
     }
 
@@ -5019,7 +5017,7 @@ var ModEngineUI = (function(){
         var head = new Table();
         head.left();
         try{
-            head.image(contentDrawable(entry.type, getIcon("units", "factory"))).size(40).padRight(gap.md);
+            head.image(contentDrawable(entry.type, getIcon("units", "factory"))).size(clampUiSize(40)).padRight(gap.md);
         }catch(eIcon){}
         var headText = new Table();
         headText.left();
@@ -5070,9 +5068,9 @@ var ModEngineUI = (function(){
 
                 var iconBack = new Table();
                 iconBack.background(selected ? s.d.panelCyan : s.d.panelDark);
-                iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(28).color(tooHard ? theme.dim : contentColor(item, theme.cyan));
-                b.add(iconBack).size(46);
-                assignRow.add(b).size(50).padRight(gap.xs).padTop(gap.xs);
+                iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(clampUiSize(28)).color(tooHard ? theme.dim : contentColor(item, theme.cyan));
+                b.add(iconBack).size(clampUiSize(46));
+                assignRow.add(b).size(clampUiSize(50)).padRight(gap.xs).padTop(gap.xs);
                 if((idx + 1) % 5 === 0) assignRow.row();
             })(resourceOptions[i], i);
         }
@@ -5082,7 +5080,7 @@ var ModEngineUI = (function(){
             callHandler("command", {command: "mining:fleetClear", unitType: typeName});
             rebuildContent();
         });
-        assignRow.add(clearBtn).size(50).padTop(gap.xs);
+        assignRow.add(clearBtn).size(clampUiSize(50)).padTop(gap.xs);
         p.add(assignRow).left().padTop(gap.md).row();
 
         var statusText = currentAssignment.length > 0
@@ -5120,11 +5118,11 @@ var ModEngineUI = (function(){
         var iconBack = new Table();
         iconBack.background(selected ? s.d.panelCyan : s.d.panel);
         if(item != null){
-            iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(42).color(contentColor(item, theme.cyan));
+            iconBack.image(contentDrawable(item, getIcon("box", "database"))).size(clampUiSize(42)).color(contentColor(item, theme.cyan));
         }else{
-            iconBack.image(getIcon("box", "database")).size(42).color(theme.dim);
+            iconBack.image(getIcon("box", "database")).size(clampUiSize(42)).color(theme.dim);
         }
-        b.add(iconBack).size(66).padTop(gap.md).row();
+        b.add(iconBack).size(clampUiSize(66)).padTop(gap.md).row();
         b.add(label(item == null ? "UNKNOWN" : String(item.localizedName).toUpperCase(), selected ? s.labelCyan : s.labelMuted, 0.72)).center().padTop(gap.md);
         return b;
     }
@@ -5178,12 +5176,12 @@ var ModEngineUI = (function(){
             unit.add(unitHead).growX().row();
             var unitActions = new Table();
             unitActions.left();
-            unitActions.add(textButton("APPLY", s.primary, function(){ callHandler("command", {command: "player:applyStats"}); })).height(44).minWidth(120).padRight(gap.sm);
-            unitActions.add(textButton("RESET", s.action, function(){ callHandler("command", {command: "player:resetStats"}); })).height(44).minWidth(120);
+            unitActions.add(textButton("APPLY", s.primary, function(){ callHandler("command", {command: "player:applyStats"}); })).height(clampUiSize(44)).minWidth(120).padRight(gap.sm);
+            unitActions.add(textButton("RESET", s.action, function(){ callHandler("command", {command: "player:resetStats"}); })).height(clampUiSize(44)).minWidth(120);
             unit.add(unitActions).left().padTop(gap.md).row();
         }else{
-            unitHead.add(textButton("APPLY", s.primary, function(){ callHandler("command", {command: "player:applyStats"}); })).height(44).minWidth(120).padRight(gap.sm);
-            unitHead.add(textButton("RESET", s.action, function(){ callHandler("command", {command: "player:resetStats"}); })).height(44).minWidth(120);
+            unitHead.add(textButton("APPLY", s.primary, function(){ callHandler("command", {command: "player:applyStats"}); })).height(clampUiSize(44)).minWidth(120).padRight(gap.sm);
+            unitHead.add(textButton("RESET", s.action, function(){ callHandler("command", {command: "player:resetStats"}); })).height(clampUiSize(44)).minWidth(120);
             unit.add(unitHead).growX().row();
         }
         var statGrid = new Table();
@@ -5216,17 +5214,17 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         autoRepair.setChecked(state.playerAutoRepair);
-        repairHead.add(autoRepair).height(44).minWidth(180);
+        repairHead.add(autoRepair).height(clampUiSize(44)).minWidth(180);
         repair.add(repairHead).growX().row();
         var repairBody = new Table();
         repairBody.top().left();
         var regenSlider = liveSliderBlock("REGEN_TICK_RATE (HP/T)", 0, 2000, 10, state.playerRegen, function(v){ return "+" + Math.round(v) + " HP/S"; }, "", "", "", theme.cyan, function(v){ state.playerRegen = v; });
         if(state.compact){
             repairBody.add(regenSlider).growX().row();
-            repairBody.add(summaryCard("LIVE STATUS", "OPTIMAL", s.label, s.d.panelGold)).growX().height(150).padTop(gap.lg).row();
+            repairBody.add(summaryCard("LIVE STATUS", "OPTIMAL", s.label, s.d.panelGold)).growX().height(clampUiSize(150)).padTop(gap.lg).row();
         }else{
             repairBody.add(regenSlider).growX().padRight(gap.xl);
-            repairBody.add(summaryCard("LIVE STATUS", "OPTIMAL", s.label, s.d.panelGold)).width(clampUiSize(220)).height(150).top();
+            repairBody.add(summaryCard("LIVE STATUS", "OPTIMAL", s.label, s.d.panelGold)).width(clampUiSize(220)).height(clampUiSize(150)).top();
         }
         repair.add(repairBody).growX().padTop(gap.xl);
         leftCol.add(repair).growX().padTop(gap.lg);
@@ -5249,7 +5247,7 @@ var ModEngineUI = (function(){
         ];
         var statusCols = state.compact ? 1 : 2;
         for(var pi = 0; pi < buttons.length; pi++){
-            statusGrid.add(buttons[pi]).growX().height(72).minWidth(state.compact ? 0 : clampUiSize(210)).padRight(gap.md).padBottom(gap.md);
+            statusGrid.add(buttons[pi]).growX().height(clampUiSize(72)).minWidth(state.compact ? 0 : clampUiSize(210)).padRight(gap.md).padBottom(gap.md);
             if((pi + 1) % statusCols === 0) statusGrid.row();
         }
         statuses.add(statusGrid).growX().padTop(gap.lg);
@@ -5257,9 +5255,9 @@ var ModEngineUI = (function(){
 
         var commands = panel(s.d.panelGold, gap.xl);
         commands.add(label("QUICK COMMANDS", s.label, 1.1)).left().row();
-        commands.add(textButton("HEAL TO MAX", s.primary, function(){ callHandler("command", {command: "player:healMax"}); })).growX().height(58).padTop(gap.lg).row();
-        commands.add(textButton("REFILL AMMO", s.action, function(){ callHandler("command", {command: "player:refillAmmo"}); })).growX().height(58).padTop(gap.md).row();
-        commands.add(textButton("SELF-DESTRUCT", s.danger, function(){ callHandler("command", {command: "player:selfDestruct"}); })).growX().height(64).padTop(gap.lg);
+        commands.add(textButton("HEAL TO MAX", s.primary, function(){ callHandler("command", {command: "player:healMax"}); })).growX().height(clampUiSize(58)).padTop(gap.lg).row();
+        commands.add(textButton("REFILL AMMO", s.action, function(){ callHandler("command", {command: "player:refillAmmo"}); })).growX().height(clampUiSize(58)).padTop(gap.md).row();
+        commands.add(textButton("SELF-DESTRUCT", s.danger, function(){ callHandler("command", {command: "player:selfDestruct"}); })).growX().height(clampUiSize(64)).padTop(gap.lg);
         rightCol.add(commands).growX().padTop(gap.lg);
 
         if(state.compact){
@@ -5305,8 +5303,8 @@ var ModEngineUI = (function(){
         paramActions.left();
         paramActions.add(textButton("APPLY_UNIT_CHANGES", s.primary, function(){
             callHandler("command", {command: "weapon:applyUnits"});
-        })).height(54).minWidth(200).padRight(gap.md);
-        paramActions.add(textButton("RESET_UNITS", s.action, function(){ callHandler("command", {command: "weapon:resetUnits"}); })).height(54).minWidth(160);
+        })).height(clampUiSize(54)).minWidth(200).padRight(gap.md);
+        paramActions.add(textButton("RESET_UNITS", s.action, function(){ callHandler("command", {command: "weapon:resetUnits"}); })).height(clampUiSize(54)).minWidth(160);
         params.add(paramActions).left().padTop(gap.xl);
         left.add(params).growX().padTop(gap.lg).row();
 
@@ -5317,11 +5315,11 @@ var ModEngineUI = (function(){
         turret.add(liveSliderBlock("TURRET SPREAD (INACCURACY)", 0, 15, 0.1, state.turretSpread, function(v){ return v <= 0 ? "PERFECT (0 spread)" : (v.toFixed(1) + "°"); }, "PERFECT", "", "15° SPREAD", theme.cyan, function(v){ state.turretSpread = v; })).growX().padTop(gap.lg).row();
         turret.add(liveSliderBlock("TURRET RANGE BOOST", 0, 200, 1, state.turretRangeBoost, function(v){ return "+" + Math.round(v) + "%"; }, "0%", "", "200%", theme.cyan, function(v){ state.turretRangeBoost = v; })).growX().padTop(gap.lg).row();
         turret.add(liveSliderBlock("TURRET DAMAGE", 0, 500, 1, state.turretDamageBoost, function(v){ return "+" + Math.round(v) + "%"; }, "0%", "", "500%", theme.cyan, function(v){ state.turretDamageBoost = v; })).growX().padTop(gap.lg).row();
-        turret.add(summaryCard("ACTIVE TURRETS", String(activeTurretCount()), s.label, s.d.panel)).width(state.compact ? textBlockWidth(280) : 220).height(92).padTop(gap.xl).left().row();
+        turret.add(summaryCard("ACTIVE TURRETS", String(activeTurretCount()), s.label, s.d.panel)).width(state.compact ? textBlockWidth(280) : 220).height(clampUiSize(92)).padTop(gap.xl).left().row();
         var turretActions = new Table();
         turretActions.left();
-        turretActions.add(textButton("APPLY_TURRET_CHANGES", s.primary, function(){ callHandler("command", {command: "weapon:applyTurrets"}); })).height(54).minWidth(190).padRight(gap.md);
-        turretActions.add(textButton("RESET_TURRETS", s.action, function(){ callHandler("command", {command: "weapon:resetTurrets"}); })).height(54).minWidth(145);
+        turretActions.add(textButton("APPLY_TURRET_CHANGES", s.primary, function(){ callHandler("command", {command: "weapon:applyTurrets"}); })).height(clampUiSize(54)).minWidth(190).padRight(gap.md);
+        turretActions.add(textButton("RESET_TURRETS", s.action, function(){ callHandler("command", {command: "weapon:resetTurrets"}); })).height(clampUiSize(54)).minWidth(145);
         turret.add(turretActions).left().padTop(gap.lg);
 
         global.setClip(true);
@@ -5333,7 +5331,7 @@ var ModEngineUI = (function(){
             split.add(left).growX().row();
             split.add(turret).growX().padTop(gap.lg);
         }else{
-            split.add(left).growX().minWidth(520).top().padRight(gap.lg);
+            split.add(left).growX().minWidth(clampUiSize(520)).top().padRight(gap.lg);
             split.add(turret).width(clampUiSize(460)).top();
         }
         parent.add(split).growX().row();
@@ -5358,14 +5356,14 @@ var ModEngineUI = (function(){
             rebuildContent();
         });
         boost1.setChecked(state.miningDrillBoost);
-        drill.add(boost1).growX().height(56).padTop(gap.xl).row();
+        drill.add(boost1).growX().height(clampUiSize(56)).padTop(gap.xl).row();
         var boost2 = textButton(state.miningEfficiencyBoost ? "EXTRACTION_EFFICIENCY: ACTIVE" : "EXTRACTION_EFFICIENCY: INACTIVE", state.miningEfficiencyBoost ? s.primary : s.action, function(){
             state.miningEfficiencyBoost = !state.miningEfficiencyBoost;
             callHandler("command", {command: "mining:efficiency", value: state.miningEfficiencyBoost});
             rebuildContent();
         });
         boost2.setChecked(state.miningEfficiencyBoost);
-        drill.add(boost2).growX().height(56).padTop(gap.md).row();
+        drill.add(boost2).growX().height(clampUiSize(56)).padTop(gap.md).row();
         drill.add(liveSliderBlock("GLOBAL_MINE_SPEED", 1, 12, 0.1, state.miningSpeed, function(v){ return "x" + v.toFixed(1); }, "", "", "", theme.cyan, function(v){
             state.miningSpeed = v;
             callHandler("command", {command: "mining:setSpeed", value: v});
@@ -5389,11 +5387,11 @@ var ModEngineUI = (function(){
         var minerCard = summaryCard("MINER_TYPES", String(liveTypes), s.label, s.d.panel);
         var activeCard = summaryCard("UNITS_MINING", totalActive + " / " + totalMiners, s.label, s.d.panel);
         if(state.compact){
-            summaryRow.add(minerCard).growX().height(90).row();
-            summaryRow.add(activeCard).growX().height(90).padTop(gap.md);
+            summaryRow.add(minerCard).growX().height(clampUiSize(90)).row();
+            summaryRow.add(activeCard).growX().height(clampUiSize(90)).padTop(gap.md);
         }else{
-            summaryRow.add(minerCard).width(150).height(90).padRight(gap.md);
-            summaryRow.add(activeCard).width(150).height(90);
+            summaryRow.add(minerCard).width(clampUiSize(150)).height(90).padRight(gap.md);
+            summaryRow.add(activeCard).width(clampUiSize(150)).height(90);
         }
         summary.add(summaryRow).growX().padTop(gap.lg);
         left.add(summary).growX().padTop(gap.lg);
@@ -5449,8 +5447,8 @@ var ModEngineUI = (function(){
             split.add(left).growX().row();
             split.add(right).growX().padTop(gap.lg);
         }else{
-            split.add(left).growX().minWidth(340).top().padRight(gap.xl);
-            split.add(right).growX().minWidth(420).top();
+            split.add(left).growX().minWidth(clampUiSize(340)).top().padRight(gap.xl);
+            split.add(right).growX().minWidth(clampUiSize(420)).top();
         }
         parent.add(split).growX().padTop(gap.xl).row();
     }
@@ -5462,7 +5460,7 @@ var ModEngineUI = (function(){
         row.margin(gap.md);
         row.left();
         try{
-            row.image(icon).size(44).padRight(gap.md);
+            row.image(icon).size(clampUiSize(44)).padRight(gap.md);
         }catch(eIcon){}
         var info = new Table();
         info.left();
@@ -5518,12 +5516,12 @@ var ModEngineUI = (function(){
             callHandler("command", {command: "radius:toggleTurrets"});
             rebuildContent();
         });
-        toggleRow.add(turretToggle).height(50).growX().padRight(gap.md);
+        toggleRow.add(turretToggle).height(clampUiSize(50)).growX().padRight(gap.md);
         var unitToggle = toggleTextButton(state.showUnitRadii ? "UNIT RADII: ON" : "UNIT RADII: OFF", state.showUnitRadii ? s.primary : s.action, state.showUnitRadii, function(){
             callHandler("command", {command: "radius:toggleUnits"});
             rebuildContent();
         });
-        toggleRow.add(unitToggle).height(50).growX();
+        toggleRow.add(unitToggle).height(clampUiSize(50)).growX();
         overlay.add(toggleRow).growX().padTop(gap.md);
         parent.add(overlay).growX().padTop(gap.lg).row();
 
@@ -5559,13 +5557,13 @@ var ModEngineUI = (function(){
         var row = new Table();
         row.left();
         if(state.compact){
-            row.add(textButton("ENABLE_" + id.toUpperCase(), s.primary, function(){ callHandler("command", {command: id + ":enable"}); })).height(56).growX().row();
-            row.add(textButton("SYNC_STATE", s.action, function(){ callHandler("command", {command: id + ":sync"}); })).height(56).growX().padTop(gap.md).row();
-            row.add(textButton("RESET_VIEW", s.action, function(){ callHandler("command", {command: id + ":reset"}); })).height(56).growX().padTop(gap.md);
+            row.add(textButton("ENABLE_" + id.toUpperCase(), s.primary, function(){ callHandler("command", {command: id + ":enable"}); })).height(clampUiSize(56)).growX().row();
+            row.add(textButton("SYNC_STATE", s.action, function(){ callHandler("command", {command: id + ":sync"}); })).height(clampUiSize(56)).growX().padTop(gap.md).row();
+            row.add(textButton("RESET_VIEW", s.action, function(){ callHandler("command", {command: id + ":reset"}); })).height(clampUiSize(56)).growX().padTop(gap.md);
         }else{
-            row.add(textButton("ENABLE_" + id.toUpperCase(), s.primary, function(){ callHandler("command", {command: id + ":enable"}); })).height(56).minWidth(220).padRight(gap.md);
-            row.add(textButton("SYNC_STATE", s.action, function(){ callHandler("command", {command: id + ":sync"}); })).height(56).minWidth(180).padRight(gap.md);
-            row.add(textButton("RESET_VIEW", s.action, function(){ callHandler("command", {command: id + ":reset"}); })).height(56).minWidth(180);
+            row.add(textButton("ENABLE_" + id.toUpperCase(), s.primary, function(){ callHandler("command", {command: id + ":enable"}); })).height(clampUiSize(56)).minWidth(220).padRight(gap.md);
+            row.add(textButton("SYNC_STATE", s.action, function(){ callHandler("command", {command: id + ":sync"}); })).height(clampUiSize(56)).minWidth(180).padRight(gap.md);
+            row.add(textButton("RESET_VIEW", s.action, function(){ callHandler("command", {command: id + ":reset"}); })).height(clampUiSize(56)).minWidth(180);
         }
         p.add(row).left().padTop(gap.xl).row();
         parent.add(p).growX().row();
@@ -5606,22 +5604,6 @@ var ModEngineUI = (function(){
         addFooter(main);
 
         root.add(main).grow();
-        // Apply localScale() to the entire root via setTransform+setScale.
-        // Because every Cell/Label/Button is a child of this group, they
-        // all shrink (or grow) by the same factor in lockstep. This is
-        // the same mechanism Mindustry uses internally with Scl.scl(),
-        // but applied locally to our root so it does not leak into
-        // other dialogs.
-        //
-        // We do NOT call Scl.setProduct() to avoid disturbing the per-JVM
-        // Scl cache that every other Mindustry dialog relies on.
-        try{
-            root.setTransform(true);
-            root.setOrigin(Align.center);
-            root.setScale(localScale(), localScale());
-        }catch(eScale){
-            Log.err("mod-engine: setTransform/setScale not available", eScale);
-        }
         rebuildContent();
     }
 
@@ -5755,8 +5737,8 @@ var ModEngineUI = (function(){
                 state.welcomeLang = "ru";
                 paint();
             });
-            langRow.add(enBtn).height(40).minWidth(72).padRight(gap.sm);
-            langRow.add(ruBtn).height(40).minWidth(72);
+            langRow.add(enBtn).height(clampUiSize(40)).minWidth(72).padRight(gap.sm);
+            langRow.add(ruBtn).height(clampUiSize(40)).minWidth(72);
             body.add(langRow).left().padTop(gap.lg).row();
 
             var tips = new Table();
@@ -5766,7 +5748,7 @@ var ModEngineUI = (function(){
                 row.left().top();
                 row.background(s.d.panel);
                 row.margin(gap.md);
-                row.add(label(String(i + 1).padStart ? String(i + 1).padStart(2, "0") : ((i + 1) < 10 ? "0" + (i + 1) : String(i + 1)), s.labelCyan, 0.8)).width(36).left();
+                row.add(label(String(i + 1).padStart ? String(i + 1).padStart(2, "0") : ((i + 1) < 10 ? "0" + (i + 1) : String(i + 1)), s.labelCyan, 0.8)).width(clampUiSize(36)).left();
                 row.add(wrappedLabel(copy.tips[i], s.label, 0.84)).growX().left();
                 tips.add(row).growX().padTop(i === 0 ? gap.md : gap.sm).row();
             }
@@ -5783,10 +5765,10 @@ var ModEngineUI = (function(){
             try{ ArcCore.settings.put(welcomeSettingsKey(), true); }catch(eSet){}
             state.welcomeShown = true;
             hideInstant(d);
-        })).height(50).width(180).padTop(gap.md);
+        })).height(clampUiSize(50)).width(180).padTop(gap.md);
         d.buttons.add(textButton(lang === "ru" ? "ПОЗЖЕ" : "LATER", s.action, function(){
             hideInstant(d);
-        })).height(50).width(140).padTop(gap.md).padLeft(gap.sm);
+        })).height(clampUiSize(50)).width(140).padTop(gap.md).padLeft(gap.sm);
         d.show();
     }
 
