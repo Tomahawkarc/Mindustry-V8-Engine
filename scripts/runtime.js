@@ -2403,12 +2403,20 @@ var ModEngineRuntime = (function(){
         if(cmd === "weapon:applyUnits"){
             if(ui != null && ui.state != null){
                 var teamRules = Vars.state.rules.teams.get(playerTeam());
+                // DamageMultiplier — это правило команды, оно безопасно (только для вас)
                 teamRules.unitDamageMultiplier = Math.max(1, ui.state.weaponGlobalDamage);
                 
-                buffWeapons(ui.state.unitFireRate, ui.state.weaponSpread, ui.state.weaponBulletDamage, ui.state.weaponRange);
+                // ВНИМАНИЕ: buffWeapons изменяет UnitType напрямую. 
+                // В Mindustry UnitType общие для всех команд. 
+                // Чтобы скорострельность/дальность не влияли на врагов, мы НЕ вызываем их здесь,
+                // если хотим строго командный эффект.
+                
+                // buffWeapons(ui.state.unitFireRate, ui.state.weaponSpread, ui.state.weaponBulletDamage, ui.state.weaponRange);
+                
                 unitRangeCache = {};
+                syncRules();
             }
-            notify("UNIT WEAPONS APPLIED (TEAM DAMAGE MULT)");
+            notify("TEAM DAMAGE APPLIED (Rules Based)");
             return;
         }
         if(cmd === "weapon:resetUnits"){
@@ -2444,16 +2452,14 @@ var ModEngineRuntime = (function(){
         }
         if(cmd === "weapon:applyTurrets"){
             if(ui != null && ui.state != null){
-                var turretReloadMul = ui.state.turretReloadMult >= 50 ? 0 : (1 / Math.max(0.1, ui.state.turretReloadMult));
-                var turretRangeMul = 1 + ui.state.turretRangeBoost / 100;
-                var turretSpreadVal = ui.state.turretSpread == null ? 0 : ui.state.turretSpread;
-                
-                buffTurrets(turretReloadMul, turretSpreadVal, turretRangeMul);
+                // buffTurrets изменяет блоки. Блоки общие для всех.
+                // buffTurrets(turretReloadMul, turretSpreadVal, turretRangeMul);
                 
                 var teamRulesT = Vars.state.rules.teams.get(playerTeam());
                 teamRulesT.blockDamageMultiplier = 1 + ui.state.turretDamageBoost / 100;
+                syncRules();
             }
-            notify("TURRET PARAMETERS APPLIED (TEAM MULT)");
+            notify("TEAM TURRET DAMAGE APPLIED");
             return;
         }
         if(cmd === "weapon:resetTurrets"){
@@ -2854,6 +2860,11 @@ var ModEngineRuntime = (function(){
             if(replacement == null){ notify("NO UNIT TYPE SELECTED"); return; }
             try{
                 var targetTeam = playerTeam();
+                
+                // Устанавливаем тип юнита для спавна из ядра для этой команды
+                var teamRules = Vars.state.rules.teams.get(targetTeam);
+                teamRules.unitType = replacement;
+                
                 var rx = Vars.player.x, ry = Vars.player.y;
                 if(puReplace != null){ rx = puReplace.x; ry = puReplace.y; }
                 
@@ -2861,7 +2872,9 @@ var ModEngineRuntime = (function(){
                 Vars.player.unit(newUnit);
                 
                 if(puReplace != null && puReplace != newUnit) puReplace.kill();
-                notify("CHAR REPLACED: " + replacement.localizedName);
+                
+                syncRules(); // Синхронизируем правила, чтобы изменения применились
+                notify("CHAR REPLACED PERMANENTLY: " + replacement.localizedName);
             }catch(eReplace){
                 Log.err("Unit replacement failed", eReplace);
                 notify("REPLACEMENT FAILED");
