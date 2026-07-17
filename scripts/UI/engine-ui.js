@@ -20,7 +20,6 @@ var Label = Packages.arc.scene.ui.Label;
 var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
-var KeyCode = Packages.arc.input.KeyCode;
 
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
@@ -554,9 +553,9 @@ var ModEngineUI = (function(){
             state.menuOpacity = v;
         })).growX().padTop(gap.lg).row();
 
-        body.add(liveSliderBlock("UI SCALE (MANUAL OVERRIDE)", 0.65, 1.0, 0.01, state.uiScale, function(v){
+        body.add(liveSliderBlock("UI SCALE (MANUAL OVERRIDE)", 0.35, 1.0, 0.01, state.uiScale, function(v){
             return Math.round(v * 100) + "%";
-        }, "65%", "82%", "100%", theme.cyan, function(v){
+        }, "35%", "68%", "100%", theme.cyan, function(v){
             state.uiScale = v;
             saveUiScale();
             // Re-apply the local scale: each label() multiplies by localScale(),
@@ -671,7 +670,7 @@ var ModEngineUI = (function(){
         try{
             var saved = ArcCore.settings.getFloat(uiScaleSettingsKey(), 1.0);
             if(isNaN(saved)) saved = 1.0;
-            state.uiScale = Math.max(0.65, Math.min(1.0, saved));
+            state.uiScale = Math.max(0.35, Math.min(1.0, saved));
         }catch(e){
             state.uiScale = 1.0;
         }
@@ -724,6 +723,11 @@ var ModEngineUI = (function(){
     // Mindustry UI dialog would size itself for). Dividing by Scl gives
     // the same number Mindustry's own layout code uses internally.
     function logicalScreenWidth(){
+        try{
+            if(ArcCore.scene != null && ArcCore.scene.getWidth() > 0){
+                return ArcCore.scene.getWidth();
+            }
+        }catch(e){}
         var w = 1080;
         try{ w = ArcCore.graphics.getWidth(); }catch(eSize){}
         if(w <= 0) w = 1080;
@@ -733,6 +737,11 @@ var ModEngineUI = (function(){
     }
 
     function logicalScreenHeight(){
+        try{
+            if(ArcCore.scene != null && ArcCore.scene.getHeight() > 0){
+                return ArcCore.scene.getHeight();
+            }
+        }catch(e){}
         var h = 720;
         try{ h = ArcCore.graphics.getHeight(); }catch(eSize){}
         if(h <= 0) h = 720;
@@ -748,16 +757,16 @@ var ModEngineUI = (function(){
 
         var refW = 1350.0;
         var refH = 700.0;
-        var minScale = 0.55;
+        var minScale = 0.35;
 
         if(cls === "medium"){
             refW = 850.0;
-            refH = 480.0;
-            minScale = 0.55;
+            refH = 580.0;
+            minScale = 0.35;
         }else if(cls === "narrow"){
             refW = 380.0;
-            refH = 480.0;
-            minScale = 0.60;
+            refH = 580.0;
+            minScale = 0.40;
         }
 
         var wRatio = lw / refW;
@@ -773,21 +782,14 @@ var ModEngineUI = (function(){
         var auto = autoUiScale();
         var manual = state.uiScale == null ? 1.0 : state.uiScale;
         var combined = auto * manual;
-        if(combined < 0.4) combined = 0.4;
+        if(combined < 0.25) combined = 0.25;
         if(combined > 1.0) combined = 1.0;
         return combined;
     }
 
-    // Global per-element scale factor in [0.4, 1.0]. This number is the
-    // single value applied to the root Group via setScale(), which
-    // scales the entire UI tree (text, cells, hitboxes) by the same
-    // factor in lockstep. Because of setScale, individual label.fontScale
-    // and cell.width values do NOT need to be multiplied by localScale()
-    // — Arc handles the visual scaling and input hitboxes correctly
-    // through the transform.
     function localScale(){
         var v = effectiveUiScale();
-        if(v < 0.4) v = 0.4;
+        if(v < 0.25) v = 0.25;
         if(v > 1.0) v = 1.0;
         return v;
     }
@@ -5870,43 +5872,23 @@ var ModEngineUI = (function(){
         d.setFillParent(true);
         d.cont.setFillParent(true);
         d.cont.margin(0);
-        // Force the width class to be re-read on this show() so a window that was
-        // resized while the menu was closed is handled correctly.
         state.lastScreenWidth = -1;
-        // Reset lastAppliedUiScale so the first applyUiScale() after this show
-        // always runs (otherwise a same-scale reopen would be a no-op). This
-        // is the path that picks up the AUTO scale on first show - the slider
-        // callback path is the only other place applyUiScale() runs.
         state.lastAppliedUiScale = -1;
-        try{ Log.info("[mod-engine-ui] show: state reset, calling buildRoot"); }catch(eLog){}
         buildRoot();
-        try{ Log.info("[mod-engine-ui] show: buildRoot ok, root class=" + (root == null ? "null" : root.getClass().getName())); }catch(eLog){}
-        try{ d.cont.add(root).grow(); Log.info("[mod-engine-ui] show: cont.add(root).grow() ok"); }catch(eAdd){ Log.err("[mod-engine-ui] show: cont.add(root) FAILED", eAdd); throw eAdd; }
-        try{ d.show(); Log.info("[mod-engine-ui] show: d.show() ok, dialog=" + (d.isShown() ? "shown" : "hidden")); }catch(eShow){ Log.err("[mod-engine-ui] show: d.show() FAILED", eShow); throw eShow; }
-        // The dialog does not have its real size on the stage until a frame
-        // after d.show() returns. We post a sequence of frame callbacks so
-        // the auto-scale retry keeps firing until the dialog actually has a
-        // non-zero width and our localScale() produces a value different
-        // from the placeholder 1.0 we used during the very first buildRoot.
-        //
-        // Without this loop, mobile first-show misses the auto scale: the
-        // first applyUiScale() runs while graphics.getWidth() still returns
-        // 0 and localScale() = 1.0; subsequent posts never fire because the
-        // slider callback is the only other place that calls applyUiScale().
+        try{ d.cont.add(root).grow(); }catch(eAdd){ Log.err("[mod-engine-ui] show: cont.add(root) FAILED", eAdd); throw eAdd; }
+        try{ d.show(); }catch(eShow){ Log.err("[mod-engine-ui] show: d.show() FAILED", eShow); throw eShow; }
+
         var applyAttempts = 0;
         function tryApply(){
             applyAttempts++;
             try{
                 if(dialog == null || !dialog.isShown()) return;
-                var before = state.lastAppliedUiScale;
-                applyAutoScaleOnShow();
-                if(state.lastAppliedUiScale === before && applyAttempts < 6){
-                    // The dialog was still 0-sized; retry next frame.
-                    try{
-                        ArcCore.app.post(run(tryApply));
-                    }catch(ePost2){
-                        applyUiScale();
-                    }
+                var targetScale = localScale();
+                if(Math.abs(targetScale - state.lastAppliedUiScale) > 0.001){
+                    state.lastAppliedUiScale = targetScale;
+                    refreshRoot();
+                }else if(applyAttempts < 4){
+                    try{ ArcCore.app.post(run(tryApply)); }catch(ePost2){}
                 }
             }catch(eApply){
                 try{ applyUiScale(); }catch(e2){}
