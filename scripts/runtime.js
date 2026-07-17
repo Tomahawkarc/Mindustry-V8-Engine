@@ -66,6 +66,38 @@ function scriptsApi(){
 }
 
     function enemyTeam(){
+var Wall = Packages.mindustry.world.blocks.defense.Wall;
+var ItemTurret = Packages.mindustry.world.blocks.defense.turrets.ItemTurret;
+var Conveyor = Packages.mindustry.world.blocks.distribution.Conveyor;
+var ItemBridge = Packages.mindustry.world.blocks.distribution.ItemBridge;
+var BufferedItemBridge = Packages.mindustry.world.blocks.distribution.BufferedItemBridge;
+var Router = Packages.mindustry.world.blocks.distribution.Router;
+var Junction = Packages.mindustry.world.blocks.distribution.Junction;
+var BufferItem = Packages.mindustry.world.blocks.distribution.BufferItem;
+var Geometry = Packages.arc.math.geom.Geometry;
+var LogicAI = Packages.mindustry.ai.types.LogicAI;
+var CommandAI = Packages.mindustry.ai.types.CommandAI;
+var UnitCommand = Packages.mindustry.ai.UnitCommand;
+var Vec2 = Packages.arc.math.geom.Vec2;
+var IntSeq = Packages.arc.struct.IntSeq;
+var Call = Packages.mindustry.gen.Call;
+var ContentType = Packages.mindustry.ctype.ContentType;
+
+var Trigger = Packages.mindustry.game.EventType.Trigger;
+var ClientLoadEvent = Packages.mindustry.game.EventType.ClientLoadEvent;
+var WorldLoadEvent = Packages.mindustry.game.EventType.WorldLoadEvent;
+var TapEvent = Packages.mindustry.game.EventType.TapEvent;
+
+var UserWorkbench = require("user-workbench");
+var ModEngineRender = require("render");
+var NexusSlider = require("UI/slider");
+var HudPositioning = require("UI/hud-positioning");
+
+function scriptsApi(){
+    try{ return Vars.mods == null ? null : Vars.mods.getScripts(); }catch(e){ return null; }
+}
+
+    function enemyTeam(){
     try{
         if(Vars.state != null && Vars.state.rules != null && Vars.state.rules.waveTeam != null) return Vars.state.rules.waveTeam;
     }catch(e){}
