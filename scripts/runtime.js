@@ -106,14 +106,14 @@ function ensureCommandController(unit){
 
 function callCommandMethod(ai, unit, cmd){
     try{
-        // Как в UnitType.create(): command.command = defaultCommand — прямое присваивание полю,
-        // а не вызов метода. Это обходит конфликт поле/метод в Rhino полностью.
+        
+        
         if(unit.type == null || unit.type.commands == null || !unit.type.commands.contains(cmd)){
             return false;
         }
         ai.command = cmd;
-        // Повторяем побочные эффекты метода CommandAI.command(), которые мы теряем,
-        // не вызывая сам метод:
+        
+        
         unit.mineTile = null;
         try{ unit.clearBuilding(); }catch(eCb){}
         return true;
@@ -139,9 +139,9 @@ function unitHasMineCommand(unit){
     }
 }
 
-// Включает/выключает конкретную руду в списке добычи юнита, НЕ сбрасывая уже
-// идущий майнинг других выбранных руд (в отличие от setUnitMineTile, который
-// заменяет цель целиком). Это и есть логика "несколько руд одновременно".
+
+
+
 function toggleUnitMineItem(unit, item, enabled){
     if(unit == null || item == null) return false;
 
@@ -156,9 +156,9 @@ function toggleUnitMineItem(unit, item, enabled){
         return false;
     }
 
-    // Команду mineCommand выставляем только если она ещё не установлена —
-    // иначе callCommandMethod() каждый раз обнуляет unit.mineTile и прерывает
-    // уже идущий сбор других руд.
+    
+    
+    
     if(!unitHasMineCommand(unit)){
         try{ callCommandMethod(ai, unit, UnitCommand.mineCommand); }catch(eCmd){ return false; }
     }
@@ -171,7 +171,7 @@ function toggleUnitMineItem(unit, item, enabled){
             ai.setStance(stance);
         }else{
             try{ ai.disableStance(stance); }catch(eDis){
-                // fallback на случай другого имени метода в этой версии API
+                
                 try{ ai["disableStance"](stance); }catch(eDis2){}
             }
         }
@@ -180,8 +180,8 @@ function toggleUnitMineItem(unit, item, enabled){
     }
 
     if(enabled){
-        // fallback: если юнит ничем сейчас не занят, сразу подсказываем ближайшую руду,
-        // чтобы не ждать следующего внутреннего тика MinerAI
+        
+        
         try{
             if(unitMineTile(unit) == null){
                 var oreTile = findOreTile(unit, item);
@@ -204,8 +204,8 @@ function toggleFleetMiningItem(unitTypeName, item, enabled, team){
 function setUnitMineTile(unit, item, preserveController){
     if(unit == null) return false;
     if(preserveController){
-        // player-driven unit: PlayerController already handles native mine-and-return behavior,
-        // just set the field directly and never touch the controller.
+        
+        
         try{
             if(item != null){
                 var tile = findOreTile(unit, item);
@@ -259,8 +259,8 @@ function setUnitMineTile(unit, item, preserveController){
             Log.info("MOD_ENGINE_MINE_DEBUG: hasStance after set = @", ai.hasStance(stance));
         }
 
-        // Fallback: явно ищем ближайшую руду и ставим mineTile напрямую,
-        // на случай если внутренний MinerAI-делегат не начинает поиск сразу же в этот тик.
+        
+        
         try{
             var oreTile = findOreTile(unit, item);
             Log.info("MOD_ENGINE_MINE_DEBUG: findOreTile result = @", oreTile);
@@ -401,7 +401,7 @@ function eachFleetUnit(unitTypeName, team, fn){
         }catch(eInner){}
     }
 
-    // Preferred: team unit index
+    
     try{
         if(team != null){
             var data = team.data();
@@ -414,7 +414,7 @@ function eachFleetUnit(unitTypeName, team, fn){
         }
     }catch(e){}
 
-    // Desktop/V8 fallback: Groups.unit is often more complete than team.data().units
+    
     try{
         Groups.unit.each(cons(function(unit){
             consider(unit);
@@ -476,8 +476,8 @@ var ModEngineRuntime = (function(){
     var quickHudAnchor = null;
     var speedHudRoot = null;
     var speedHudAnchor = null;
-    var speedStackHolder = null;   // используется только для позиционирования speed/quick HUD и правой кнопки меню
-    var isMobilePlatform = false;  // для позиционирования Select HUD: на android - строго справа, на пк - на месте нативного
+    var speedStackHolder = null;   
+    var isMobilePlatform = false;  
     var originalsCaptured = false;
     var turretDefaults = [];
     var weaponDefaults = [];
@@ -487,7 +487,7 @@ var ModEngineRuntime = (function(){
     var markerLastTileX = -99999;
     var markerLastTileY = -99999;
 
-    // New: custom spawn position marker for units (beautiful red, disappears after use)
+    
     var spawnMarkerActive = false;
     var spawnMarkerX = 0;
     var spawnMarkerY = 0;
@@ -596,8 +596,8 @@ var ModEngineRuntime = (function(){
             if(!metaFile.exists()) metaFile = loaded.root.child("mod.hjson");
             if(!metaFile.exists()) return;
             var raw = Jval.read(metaFile.readString("UTF-8"));
-            // Browser-safe tags use [color[]] so one cleanup pass turns them into
-            // regular [color] markup. Decode that extra layer before installed-mod UI.
+            
+            
             loaded.meta.displayName = Strings.stripColors(raw.getString("displayName", loaded.meta.displayName));
             loaded.meta.author = Strings.stripColors(raw.getString("author", loaded.meta.author));
             loaded.meta.subtitle = Strings.stripColors(raw.getString("subtitle", loaded.meta.subtitle));
@@ -805,10 +805,10 @@ var ModEngineRuntime = (function(){
         return button;
     }
 
-    // HUD positioning теперь делегируется в HudPositioning (UI/hud-positioning.js).
-    // Оставлены только тонкие обёртки для обратной совместимости.
+    
+    
 
-    // Thin wrapper — new hud-positioning uses the proven working logic
+    
     function hudScale(){
         try{
             if(ui != null && ui.scaleFactor != null){
@@ -848,9 +848,9 @@ var ModEngineRuntime = (function(){
         var position = new Vec2();
         var menuHudShown = null;
 
-        // Кнопка меню — ВСЕГДА СПРАВА от НАТИВНОГО якоря ("mobile buttons" или "statustable").
-        // НЕ зависит от speed/quick HUD. Всегда flush справа от native anchor.
-        // Больше НЕ ТРОГАЕМ ЭТУ ЛОГИКУ.
+        
+        
+        
         hudRoot.update(run(function(){
             try{
                 var shown = modHudVisible() && anchor != null && anchor.hasParent();
@@ -861,13 +861,13 @@ var ModEngineRuntime = (function(){
                 }
                 if(!shown) return;
 
-                // Всегда используем переданный native anchor (mobile buttons или statustable)
+                
                 position.set(0, 0);
                 anchor.localToStageCoordinates(position);
                 extension.pack();
 
-                // Точно как в оригинальном рабочем скрипте:
-                // x = anchorX + width, y = anchorY + height - buttonHeight  (справа, flush)
+                
+                
                 extension.setPosition(
                     position.x + anchor.getWidth(),
                     position.y + anchor.getHeight() - extension.getHeight()
@@ -888,7 +888,7 @@ var ModEngineRuntime = (function(){
             }
         }catch(eExisting){}
 
-        // Attach visually after the native row without changing its hardcoded five-button width.
+        
         try{
             var nativeRow = Vars.ui.hudGroup.find("mobile buttons");
             if(nativeRow != null){
@@ -897,7 +897,7 @@ var ModEngineRuntime = (function(){
             }
         }catch(eNative){}
 
-        // Desktop has no button row; attach to the status table without affecting its layout.
+        
         try{
             var statusTable = Vars.ui.hudGroup.find("statustable");
             if(statusTable != null){
@@ -1002,7 +1002,7 @@ var ModEngineRuntime = (function(){
                     quickHudShown = enabled;
                     holder.visible = enabled;
                     if(enabled){
-                        quickHudPosTimer = 999; // форсируем reposition
+                        quickHudPosTimer = 999; 
                     }
                 }
                 if(!enabled) return;
@@ -1017,22 +1017,22 @@ var ModEngineRuntime = (function(){
                     quickHudAnchor.localToStageCoordinates(selectionPos);
                     holder.pack();
 
-                    // === React to other mods' expandable HUDs (arrow-down panels) ===
-                    // Even though Select is placed relative to "command", nearby expandable HUDs
-                    // may push vertically or cause layout shifts. Force fresh obstacle awareness.
+                    
+                    
+                    
                     if((quickHudPosTimer % 4) === 0){
                         HudPositioning.forceRefresh();
                     }
 
                     if(isMobilePlatform){
-                        // На андроиде: СТРОГО СПРАВА от нативного HUD командования ("command"),
-                        // flush, без зазора. (как главная кнопка меню)
+                        
+                        
                         holder.setPosition(
                             selectionPos.x + quickHudAnchor.getWidth(),
                             selectionPos.y + quickHudAnchor.getHeight() - holder.getHeight()
                         );
                     }else{
-                        // На ПК: прямо НА МЕСТЕ нативного HUD командования.
+                        
                         holder.setPosition(
                             selectionPos.x,
                             selectionPos.y + quickHudAnchor.getHeight() - holder.getHeight()
@@ -1053,14 +1053,14 @@ var ModEngineRuntime = (function(){
         speedHudRoot = null;
         speedHudAnchor = null;
         speedStackHolder = null;
-        // Главная кнопка меню всегда справа от native HUD — её позиция не зависит от speed/quick HUD
+        
     }
 
     function rebuildQuickAccessHud(){
         removeSpeedHud();
         HudPositioning.resetCache();
         ensureSpeedHud();
-        // Главная кнопка меню позиционируется независимо (справа от HUD)
+        
         try{
             if(hudRoot) hudRoot.visible = true;
         }catch(e){}
@@ -1139,9 +1139,9 @@ var ModEngineRuntime = (function(){
         }
         holder.pack();
         speedHudRoot.addChild(holder);
-        speedStackHolder = holder;  // capture для динамического якоря главной кнопки
+        speedStackHolder = holder;  
 
-        // v2: Используем HudPositioning для правильного размещения ПОД другими HUD
+        
         var speedHudShown = false;
         var speedHudResizeTimer = 0;
         var speedHudAnchorTimer = 0;
@@ -1161,13 +1161,13 @@ var ModEngineRuntime = (function(){
                     speedHudPoint.set(0, 0);
                     speedHudAnchor.localToStageCoordinates(speedHudPoint);
 
-                    // === IMPROVED: always force fresh obstacle scan so we react to expandable HUDs ===
-                    // (other mods' "arrow down" that makes their panel taller)
+                    
+                    
                     HudPositioning.forceRefresh();
 
-                    // Throttled recompute inside the stack function + size tracking
+                    
                     speedHudProbeTimer++;
-                    if(speedHudBottom == null || speedHudProbeTimer >= 8){   // faster probe for dynamic HUDs
+                    if(speedHudBottom == null || speedHudProbeTimer >= 8){   
                         speedHudProbeTimer = 0;
                         speedHudBottom = HudPositioning.hudStackBottom(
                             speedHudAnchor, speedHudPoint.y, speedHudPoint.x, holder.getWidth(), holder.getHeight()
@@ -1187,20 +1187,20 @@ var ModEngineRuntime = (function(){
                     holder.visible = enabled;
                     if(enabled){
                         positionCtrl.forceNext();
-                        HudPositioning.forceRefresh(); // react to other expandable HUDs immediately
+                        HudPositioning.forceRefresh(); 
                         Core.app.post(run(function(){ repositionSpeedHud(); }));
                     }
                 }
                 if(!enabled) return;
 
                 speedHudResizeTimer++;
-                if(speedHudResizeTimer < 85) return;   // big lag fix
+                if(speedHudResizeTimer < 85) return;   
                 speedHudResizeTimer = 0;
 
-                // === NEW: react to expandable HUDs from other mods (arrow-down buttons etc) ===
-                // Every ~12 frames we force a fresh obstacle scan so our stack moves when
-                // another mod's HUD grows after the user clicks its "expand" arrow.
-                // The detection inside hud-positioning.js also auto-invalidates on size change.
+                
+                
+                
+                
                 if((speedHudResizeTimer % 4) === 0){
                     HudPositioning.forceRefresh();
                     positionCtrl.forceNext();
@@ -1441,8 +1441,8 @@ var ModEngineRuntime = (function(){
                     var ad = d.ammoDefaults[a];
                     try{
                         var beforeLifetime = ad.bullet.lifetime;
-                        // Формула из проверенного рабочего кода: lifetime = targetRange / speed,
-                        // maxRange = targetRange безусловно (не только когда maxRange > 0 изначально)
+                        
+                        
                         if(ad.bullet.speed > 0) ad.bullet.lifetime = targetRange / ad.bullet.speed;
                         ad.bullet.maxRange = targetRange;
                         if(!loggedOnce){
@@ -1507,8 +1507,8 @@ var ModEngineRuntime = (function(){
         for(var i = 0; i < weaponDefaults.length; i++){
             var d = weaponDefaults[i];
             try{
-                // Use the native weapon reload path for every mount. A one-tick floor avoids
-                // zero-reload bullet floods and preserves mirrored/alternating weapon logic.
+                
+                
                 d.weapon.reload = Math.max(1, d.reload / safeRate);
                 d.weapon.inaccuracy = inaccuracy;
                 if(d.weapon.bullet != null){
@@ -1662,8 +1662,8 @@ var ModEngineRuntime = (function(){
                 var end = Math.min(list.size, index + 500);
                 for(var i = index; i < end; i++) chunk.add(list.items[i]);
                 try{
-                    // Direct invocation guarantees that static, non-updating blocks (notably
-                    // walls) leave waveTeam before SectorCaptureEvent cleanup is fired.
+                    
+                    
                     Packages.mindustry.world.Tile.setTeams(chunk.toArray(), target);
                     if(Vars.net != null && Vars.net.active()) Call.setTeams(chunk.toArray(), target);
                     changedNow += chunk.size;
@@ -1682,8 +1682,8 @@ var ModEngineRuntime = (function(){
             }));
         }catch(eUnits){}
 
-        // Verify from the tile grid, not Groups.build: static walls are not guaranteed to be
-        // represented by update-oriented entity groups in every build/mod combination.
+        
+        
         var retry = new IntSeq();
         eachWorldBuild(function(build){
             try{ if(build.team != target) retry.add(build.pos()); }catch(eBuild){}
@@ -1692,8 +1692,8 @@ var ModEngineRuntime = (function(){
 
         try{
             if(Vars.state.isCampaign() && Vars.state.hasSector()){
-                // SectorCaptureEvent normally destroys waveTeam buildings. Redirect that
-                // cleanup to an unused team, then restore the original rule immediately.
+                
+                
                 var originalWaveTeam = Vars.state.rules.waveTeam;
                 var guardTeam = null;
                 try{
@@ -1712,7 +1712,7 @@ var ModEngineRuntime = (function(){
             Log.err("Official sector capture failed", eCapture);
         }
 
-        // A final pass handles blocks created by capture listeners/replacements.
+        
         var finalRetry = new IntSeq();
         eachWorldBuild(function(build){
             try{ if(build.team != target) finalRetry.add(build.pos()); }catch(eBuild){}
@@ -1730,8 +1730,8 @@ var ModEngineRuntime = (function(){
         changed += stubborn;
         eachWorldBuild(function(build){
             try{
-                // Team overlays of cached/static blocks are baked into the block cache.
-                // Rebuild both wall and minimap caches after the final verified team pass.
+                
+                
                 build.recache();
                 if(build.tile != null){
                     try{ build.tile.recache(); }catch(eTile){}
@@ -2038,8 +2038,8 @@ var ModEngineRuntime = (function(){
                         try{ capacity = Math.max(0, build.getMaximumAccepted(item)); }catch(eMax){}
                         if(!compatible && capacity > 0) compatible = true;
                         if(!compatible){
-                            // Dynamic unit factories/reconstructors (including modded variants)
-                            // often reject acceptStack while idle, but still expose item capacities.
+                            
+                            
                             try{
                                 capacity = Math.max(capacity, build.block.capacities[item.id]);
                                 compatible = capacity > 0;
@@ -2528,7 +2528,7 @@ var ModEngineRuntime = (function(){
                 notify("INVALID ORE TARGET");
                 return;
             }
-            // Always apply immediately on PC — do not require protocol already active.
+            
             var reOk = commandUnitMine(playerUnit(), priorityItem, true);
             if(ui != null && ui.state != null) ui.state.miningProtocolActive = reOk;
             notify(reOk ? ("MINING PRIORITY: " + priorityName.toUpperCase()) : "NO ORE FOUND NEARBY / UNIT CANNOT MINE");
@@ -2730,13 +2730,13 @@ var ModEngineRuntime = (function(){
         var team = payload.enemy ? enemyTeam() : playerTeam();
         try{ px = Vars.player.x; py = Vars.player.y; }catch(e){}
 
-        // Use custom spawn marker if armed/active (beautiful red marker)
+        
         if(ui != null && ui.state != null && ui.state.spawnMarkerActive){
             try{
                 px = ui.state.spawnMarkerX;
                 py = ui.state.spawnMarkerY;
             }catch(ePos){}
-            // Clear marker after spawn (as requested: disappears after spawn)
+            
             ui.state.spawnMarkerActive = false;
             ui.state.spawnMarkerX = 0;
             ui.state.spawnMarkerY = 0;
@@ -2789,7 +2789,7 @@ var ModEngineRuntime = (function(){
             try{
                 unit.set(ui.state.markerX, ui.state.markerY);
                 try{ unit.vel.setZero(); }catch(eVel){}
-                // Inspector marker disappears after teleport (same as spawn marker behaviour).
+                
                 ui.state.markerActive = false;
                 ui.state.markerArmed = false;
                 markerLastTapMillis = 0;
@@ -2876,7 +2876,7 @@ var ModEngineRuntime = (function(){
                     moved++;
                 }catch(eMove){}
             }
-            // Inspector marker disappears after group teleport (same as single-unit behaviour).
+            
             ui.state.markerActive = false;
             ui.state.markerArmed = false;
             markerLastTapMillis = 0;
@@ -3096,8 +3096,8 @@ var ModEngineRuntime = (function(){
             captureOriginals();
             applyGameSpeed(1);
 
-            // Определяем платформу один раз: на андроиде/мобильной - строго справа от command HUD,
-            // на ПК - на месте нативного HUD командования.
+            
+            
             try{
                 isMobilePlatform = !!Vars.mobile;
                 if(!isMobilePlatform && Core.app != null){
@@ -3139,7 +3139,7 @@ var ModEngineRuntime = (function(){
             HudPositioning.resetCache();
             HudPositioning.forceRefresh();
 
-            // Пере-проверяем платформу (на случай релога)
+            
             try{
                 isMobilePlatform = !!Vars.mobile;
                 if(!isMobilePlatform && Core.app != null){
@@ -3160,7 +3160,7 @@ var ModEngineRuntime = (function(){
             if(event == null || event.tile == null || event.player == null) return;
             try{ if(Vars.player != null && event.player != Vars.player) return; }catch(ePlayer){}
 
-            // Spawn marker: single tap to place beautiful red marker for unit spawn
+            
             if(ui.state.spawnMarkerArmed){
                 ui.state.spawnMarkerActive = true;
                 ui.state.spawnMarkerArmed = false;
@@ -3197,9 +3197,9 @@ var ModEngineRuntime = (function(){
             if(ui == null || ui.state == null) return;
             if(!inGame()) return;
             var drawRanges = ui.state.showTurretRadii || ui.state.showUnitRadii;
-            // Исправлено: больше не используем Draw.drawRange(), чтобы не ломать
-            // пайплайн effectBuffer для анимированных щитов ForceProjector (Issue#2).
-            // FBO рендеринг теперь полностью изолирован и рисуется на Layer.shields - 2.
+            
+            
+            
             try{
                 if(drawRanges) ModEngineRender.beginRanges();
                 try{
@@ -3242,7 +3242,7 @@ var ModEngineRuntime = (function(){
                     }else if(quickHudRoot != null){
                         removeQuickHud();
                     }
-                    // Force fresh scan so we react to other mods' expandable HUDs (arrow buttons etc.)
+                    
                     try{ HudPositioning.forceRefresh(); }catch(e){}
                 }catch(eQuick){}
                 try{ if(speedHudRoot == null || !speedHudRoot.hasParent()) ensureSpeedHud(); }catch(eSpeedHud){}
