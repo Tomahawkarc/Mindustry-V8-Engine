@@ -1540,6 +1540,7 @@ var ModEngineRuntime = (function(){
         var healed = 0;
         eachWorldBuild(function(build){
             try{
+                if(build == null || build.health >= build.maxHealth - 0.001) return;
                 build.health = build.maxHealth;
                 try{ build.healthChanged(); }catch(eChanged){}
                 healed++;
