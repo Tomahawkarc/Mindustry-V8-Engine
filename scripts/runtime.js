@@ -66,38 +66,6 @@ function scriptsApi(){
 }
 
     function enemyTeam(){
-var Wall = Packages.mindustry.world.blocks.defense.Wall;
-var ItemTurret = Packages.mindustry.world.blocks.defense.turrets.ItemTurret;
-var Conveyor = Packages.mindustry.world.blocks.distribution.Conveyor;
-var ItemBridge = Packages.mindustry.world.blocks.distribution.ItemBridge;
-var BufferedItemBridge = Packages.mindustry.world.blocks.distribution.BufferedItemBridge;
-var Router = Packages.mindustry.world.blocks.distribution.Router;
-var Junction = Packages.mindustry.world.blocks.distribution.Junction;
-var BufferItem = Packages.mindustry.world.blocks.distribution.BufferItem;
-var Geometry = Packages.arc.math.geom.Geometry;
-var LogicAI = Packages.mindustry.ai.types.LogicAI;
-var CommandAI = Packages.mindustry.ai.types.CommandAI;
-var UnitCommand = Packages.mindustry.ai.UnitCommand;
-var Vec2 = Packages.arc.math.geom.Vec2;
-var IntSeq = Packages.arc.struct.IntSeq;
-var Call = Packages.mindustry.gen.Call;
-var ContentType = Packages.mindustry.ctype.ContentType;
-
-var Trigger = Packages.mindustry.game.EventType.Trigger;
-var ClientLoadEvent = Packages.mindustry.game.EventType.ClientLoadEvent;
-var WorldLoadEvent = Packages.mindustry.game.EventType.WorldLoadEvent;
-var TapEvent = Packages.mindustry.game.EventType.TapEvent;
-
-var UserWorkbench = require("user-workbench");
-var ModEngineRender = require("render");
-var NexusSlider = require("UI/slider");
-var HudPositioning = require("UI/hud-positioning");
-
-function scriptsApi(){
-    try{ return Vars.mods == null ? null : Vars.mods.getScripts(); }catch(e){ return null; }
-}
-
-    function enemyTeam(){
     try{
         if(Vars.state != null && Vars.state.rules != null && Vars.state.rules.waveTeam != null) return Vars.state.rules.waveTeam;
     }catch(e){}
@@ -535,6 +503,22 @@ var ModEngineRuntime = (function(){
     var unitRangeCache = {};
     var hotkeyIgnoreUntil = 0;
     var hotkeyBinds = {};
+    var preferenceSaveTimer = 0;
+    var preferenceSnapshot = null;
+    var persistentUiFields = [
+        ["navMode", "string"], ["themeName", "string"], ["menuOpacity", "float"], ["simSpeed", "float"], ["waveIndex", "int"], ["autoWave", "bool"], ["unitSpawnAmount", "int"], ["unitSpawnEnemy", "bool"], ["itemContentMode", "string"], ["itemModFilter", "string"], ["inspectorPageSize", "int"],
+        ["worldTimeOfDay", "float"], ["worldWindStrength", "float"], ["worldSpeedQuickAccess", "bool"],
+        ["quickItemsQuickAccess", "bool"], ["quickSelectionEnabled", "bool"], ["buildInstant", "bool"],
+        ["buildGodmode", "bool"], ["playerAutoRepair", "bool"], ["playerMaxHealth", "float"],
+        ["playerMoveSpeed", "float"], ["playerJumpImpulse", "float"], ["playerMineSpeedMult", "float"],
+        ["playerRegen", "float"], ["weaponCritEnabled", "bool"], ["weaponGlobalDamage", "float"],
+        ["unitFireRate", "float"], ["weaponBulletDamage", "float"], ["weaponRange", "float"],
+        ["weaponSpread", "float"], ["turretReloadMult", "float"], ["turretRangeBoost", "float"],
+        ["turretDamageBoost", "float"], ["turretSpread", "float"], ["showTurretRadii", "bool"],
+        ["showUnitRadii", "bool"], ["showUnitHealth", "bool"], ["miningDrillBoost", "bool"],
+        ["miningEfficiencyBoost", "bool"], ["miningProtocolActive", "bool"], ["miningRange", "float"],
+        ["miningSpeed", "float"], ["miningTier", "int"], ["selectedMiningTarget", "string"]
+    ];
     var hotkeyDefinitions = [
         {id: "toggleMenu", key: "tab"},
         {id: "instantBuild", key: "f4"},
@@ -636,6 +620,43 @@ var ModEngineRuntime = (function(){
             loaded.meta.description = Strings.stripColors(raw.getString("description", loaded.meta.description));
         }catch(eMeta){
             Log.err("Failed to restore Mod Engine metadata colors", eMeta);
+        }
+    }
+
+    function uiPreferenceKey(field){ return "mod-engine-pref-" + field; }
+
+    function loadUiPreferences(){
+        if(ui == null || ui.state == null) return;
+        for(var i = 0; i < persistentUiFields.length; i++){
+            var def = persistentUiFields[i], field = def[0], type = def[1], value = null;
+            try{
+                if(type === "bool") value = Core.settings.getBool(uiPreferenceKey(field), !!ui.state[field]);
+                else if(type === "int") value = Core.settings.getInt(uiPreferenceKey(field), Number(ui.state[field]));
+                else if(type === "float") value = Core.settings.getFloat(uiPreferenceKey(field), Number(ui.state[field]));
+                else value = Core.settings.getString(uiPreferenceKey(field), String(ui.state[field]));
+                if(value != null && !isNaN(value) || type === "bool" || type === "string") ui.state[field] = value;
+            }catch(e){}
+        }
+        preferenceSnapshot = null;
+    }
+
+    function saveUiPreferences(force){
+        if(ui == null || ui.state == null) return;
+        var signature = [];
+        for(var i = 0; i < persistentUiFields.length; i++){
+            var field = persistentUiFields[i][0], type = persistentUiFields[i][1], value = ui.state[field];
+            signature.push(field + "=" + String(value));
+            try{
+                if(type === "bool") Core.settings.put(uiPreferenceKey(field), !!value);
+                else if(type === "int") Core.settings.put(uiPreferenceKey(field), Math.round(Number(value)));
+                else if(type === "float") Core.settings.put(uiPreferenceKey(field), Number(value));
+                else Core.settings.put(uiPreferenceKey(field), value == null ? "" : String(value));
+            }catch(e){}
+        }
+        var next = signature.join("|");
+        if(force === true || next !== preferenceSnapshot){
+            preferenceSnapshot = next;
+            try{ Core.settings.forceSave(); }catch(eSave){}
         }
     }
 
@@ -2443,8 +2464,7 @@ var ModEngineRuntime = (function(){
                 // Чтобы скорострельность/дальность не влияли на врагов, мы НЕ вызываем их здесь,
                 // если хотим строго командный эффект.
                 
-                // buffWeapons(ui.state.unitFireRate, ui.state.weaponSpread, ui.state.weaponBulletDamage, ui.state.weaponRange);
-                
+                buffWeapons(ui.state.unitFireRate, ui.state.weaponSpread, ui.state.weaponBulletDamage, ui.state.weaponRange);
                 unitRangeCache = {};
                 syncRules();
             }
@@ -2893,20 +2913,15 @@ var ModEngineRuntime = (function(){
             try{
                 var targetTeam = playerTeam();
                 
-                // Устанавливаем тип юнита для спавна из ядра для этой команды
-                var teamRules = Vars.state.rules.teams.get(targetTeam);
-                teamRules.unitType = replacement;
-                
                 var rx = Vars.player.x, ry = Vars.player.y;
-                if(puReplace != null){ rx = puReplace.x; ry = puReplace.y; }
-                
-                var newUnit = replacement.spawn(targetTeam, rx, ry);
+                var rotation = 0;
+                if(puReplace != null){ rx = puReplace.x; ry = puReplace.y; rotation = puReplace.rotation; }
+                // spawn() is the V8 API entry point: it creates, initializes and registers the entity.
+                var newUnit = replacement.spawn(targetTeam, rx, ry, rotation);
+                if(newUnit == null) throw new Error("UnitType.spawn returned null");
                 Vars.player.unit(newUnit);
-                
                 if(puReplace != null && puReplace != newUnit) puReplace.kill();
-                
-                syncRules(); // Синхронизируем правила, чтобы изменения применились
-                notify("CHAR REPLACED PERMANENTLY: " + replacement.localizedName);
+                notify("CHAR REPLACED: " + replacement.localizedName);
             }catch(eReplace){
                 Log.err("Unit replacement failed", eReplace);
                 notify("REPLACEMENT FAILED");
@@ -3065,6 +3080,7 @@ var ModEngineRuntime = (function(){
 
     function bindHandlers(modUi){
         ui = modUi;
+        loadUiPreferences();
         loadHotkeys();
         modUi.configure({
             hotkeys: hotkeySnapshot(),
@@ -3338,6 +3354,8 @@ var ModEngineRuntime = (function(){
         Events.run(Trigger.update, run(function(){
             if(ui == null) return;
             if(!inGame()) return;
+            preferenceSaveTimer++;
+            if(preferenceSaveTimer >= 30){ preferenceSaveTimer = 0; try{ saveUiPreferences(false); }catch(ePrefs){} }
             try{ processHotkeys(); }catch(eHotkeys){}
             try{
                 if(playerDefaults == null) capturePlayerDefaults();
