@@ -68,6 +68,12 @@ function setupScrollFocus(pane) {
                     } catch(e) {}
                 }
             }
+        },
+        scrolled: function(event) {
+            try {
+                event.stop();
+            } catch(e) {}
+            return true;
         }
     }));
 }
