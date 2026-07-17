@@ -1818,12 +1818,56 @@ var ModEngineUI = (function(){
             refreshPowerRow(netPowerBalance());
         }));
 
+        var teamPanel = panel(s.d.panel, g(gap.lg));
+        teamPanel.add(sectionHeader("TEAM SELECTION", "ACTIVE PILOT SQUADRON", getIcon("players", "admin"))).growX().row();
+        
+        var Team = Packages.mindustry.game.Team;
+        var teamOptions = [];
+        try { if (Team.sharded != null) teamOptions.push(Team.sharded); } catch(e) {}
+        try { if (Team.crux != null) teamOptions.push(Team.crux); } catch(e) {}
+        try { if (Team.derelict != null) teamOptions.push(Team.derelict); } catch(e) {}
+        try { if (Team.green != null) teamOptions.push(Team.green); } catch(e) {}
+        try { if (Team.blue != null) teamOptions.push(Team.blue); } catch(e) {}
+        try { if (Team.neoplasm != null) teamOptions.push(Team.neoplasm); } catch(e) {}
+
+        var teamGrid = new Table();
+        teamGrid.left().top();
+        var currentTeam = playerTeamRef() || Team.sharded;
+        var cols = 3;
+        for(var tIdx = 0; tIdx < teamOptions.length; tIdx++){
+            (function(team, idx){
+                var isCurrent = currentTeam.id === team.id;
+                var btn = new Button(s.tile);
+                btn.setChecked(isCurrent);
+                btn.clicked(run(function(){
+                    callHandler("command", {command: "player:setTeam", teamId: team.id});
+                    rebuildContent();
+                }));
+                
+                try {
+                    btn.image(Tex.whiteui).size(clampUiSize(12)).color(team.color).padRight(g(gap.xs));
+                } catch(eColor) {}
+                
+                btn.add(label(String(team.name).toUpperCase(), isCurrent ? s.labelCyan : s.labelMuted, 0.72));
+                
+                teamGrid.add(btn).size(clampUiSize(126), clampUiSize(42)).padRight(g(gap.xs)).padBottom(g(gap.xs));
+                if((idx + 1) % cols === 0) teamGrid.row();
+            })(teamOptions[tIdx], tIdx);
+        }
+        teamPanel.add(teamGrid).growX().padTop(g(gap.md)).row();
+
+        var rightCol = new Table();
+        rightCol.top().left();
+        rightCol.add(teamPanel).width(clampUiSize(420)).row();
+        rightCol.add(settings).width(clampUiSize(420)).padTop(g(gap.lg)).row();
+
         if(state.compact){
             body.add(flowPanel).growX().row();
+            body.add(teamPanel).growX().padTop(g(gap.lg)).row();
             body.add(settings).growX().padTop(g(gap.lg));
         }else{
             body.add(flowPanel).growX().padRight(g(gap.lg));
-            body.add(settings).width(clampUiSize(420)).top();
+            body.add(rightCol).top();
         }
         parent.add(body).growX().padTop(g(gap.lg)).row();
     }
