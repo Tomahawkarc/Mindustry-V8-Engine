@@ -36,14 +36,14 @@ function findParentScrollPane(actor) {
 function setupScrollFocus(pane) {
     pane.addListener(extend(InputListener, {
         enter: function(event, x, y, pointer, fromActor) {
-            if (pointer < 0) { // hover enter
+            if (pointer < 0) { 
                 try {
                     ArcCore.scene.setScrollFocus(pane);
                 } catch(e) {}
             }
         },
         exit: function(event, x, y, pointer, toActor) {
-            if (pointer < 0) { // hover exit
+            if (pointer < 0) { 
                 var isStillInside = false;
                 if (toActor != null) {
                     var curr = toActor;
@@ -252,15 +252,15 @@ var ModEngineUI = (function(){
         unitCustomShield: null,
         selectedWorldUnit: null,
         compact: false,
-        // Manual UI scale the user picks in the Theme dialog. Multiplies the auto value.
-        // 1.0 = no manual change, 0.65 = minimum. Persisted in settings.
+        
+        
         uiScale: 1.0,
-        // The combined (auto * manual) value we last applied to the root Group. Tracked
-        // so we only invalidate the dialog when something actually changed.
+        
+        
         lastAppliedUiScale: 1.0,
-        // Cached width class for the current screen. Lets isCompact() return a stable
-        // value during a single show() call even if graphics.getWidth() is queried
-        // mid-layout.
+        
+        
+        
         lastWidthClass: "wide",
         lastScreenWidth: 0
     };
@@ -294,9 +294,9 @@ var ModEngineUI = (function(){
     var buildOverviewCacheTime = -9999;
 
     function copyColor(src, alpha){
-        // Never Draw.color(theme.*) then Draw.alpha() on the same Color instance —
-        // Arc mutates the Color object in-place, which permanently darkens shared theme colors
-        // after the first button draw (especially primary/action checked styles).
+        
+        
+        
         var c = src == null ? theme.text : src;
         var out = new Color(c.r, c.g, c.b, c.a);
         if(alpha != null) out.a = alpha;
@@ -441,13 +441,13 @@ var ModEngineUI = (function(){
         style.up = up;
         style.over = over;
         style.down = down;
-        // Keep checked drawable bright (same family as up) so toggled buttons don't look permanently dimmed.
+        
         style.checked = checked || up;
         style.checkedOver = over;
         try{ style.checkedDown = down; }catch(eCheckedDown){}
         style.disabled = up;
         style.font = font;
-        // Clone colors so TextButton/Label style fields never share mutable theme Color refs.
+        
         style.fontColor = copyColor(fontColor, 1);
         style.overFontColor = copyColor(theme.gold, 1);
         style.downFontColor = copyColor(theme.cyan, 1);
@@ -476,12 +476,12 @@ var ModEngineUI = (function(){
             actionUp: makeDrawable(theme.panel3, theme.line, 1, null, false),
             actionOver: makeDrawable(theme.panel2, theme.goldDark, 1, null, false),
             actionDown: makeDrawable(theme.bg2, theme.cyanDark, 1, null, false),
-            // Checked action stays bright (panel2 + gold edge) instead of reusing over/down dim states.
+            
             actionChecked: makeDrawable(theme.panel2, theme.gold, 1, theme.gold, false),
             primaryUp: makeDrawable(theme.gold, theme.gold, 1, null, false),
             primaryOver: makeDrawable(theme.cyan, theme.gold, 1, null, false),
             primaryDown: makeDrawable(theme.goldDark, theme.goldDark, 1, null, false),
-            // Checked primary keeps the bright gold face (not dark goldDown).
+            
             primaryChecked: makeDrawable(theme.gold, theme.gold, 1, null, false),
             dangerUp: makeDrawable(theme.redDark, Color.valueOf("7d3340"), 1, null, false),
             dangerOver: makeDrawable(Color.valueOf("5a1825"), theme.red, 1, null, false),
@@ -551,7 +551,7 @@ var ModEngineUI = (function(){
     function applyTheme(name){
         var palette = themePalettes[name] || themePalettes.yellow;
         state.themeName = themePalettes[name] == null ? "yellow" : name;
-        // Rebuild every theme Color from scratch so previous Draw.alpha mutations cannot stick.
+        
         theme.gold = Color.valueOf(palette.primary);
         theme.cyan = Color.valueOf(palette.secondary);
         theme.goldDark = Color.valueOf(palette.primaryDark);
@@ -585,13 +585,13 @@ var ModEngineUI = (function(){
         d.cont.clear();
         d.buttons.clear();
         d.addCloseListener();
-        // The theme dialog is rendered as a regular dialog at native size. The
-        // main menu underneath is still scaled via per-label fontScale and
-        // clampUiSize() in our local helpers, but the theme dialog itself is
-        // not a child of the scaled Group — it is a separate top-level dialog
-        // on the stage. Leaving it at native size keeps the slider/button
-        // hit-testing predictable and avoids the "everything is too small to
-        // click" failure mode.
+        
+        
+        
+        
+        
+        
+        
         var body = panel(s.d.panelStrong, g(gap.xl));
         body.add(sectionHeader("INTERFACE THEME", "ACCENT PROFILE", getIcon("brush", "settings"))).growX().row();
         var names = ["yellow", "purple", "red", "blue", "green", "orange"];
@@ -622,8 +622,8 @@ var ModEngineUI = (function(){
         }
         body.add(grid).growX().padTop(g(gap.lg)).row();
 
-        // Opacity slider — its own row, then a new row before the UI scale slider so
-        // the two never share horizontal space (this was the layout bug).
+        
+        
         body.add(liveSliderBlock("MENU BACKGROUND OPACITY", 0, 1, 0.01, state.menuOpacity, function(v){ return Math.round(v * 100) + "%"; }, "0%", "50%", "100%", theme.cyan, function(v){
             state.menuOpacity = v;
         })).growX().padTop(g(gap.lg)).row();
@@ -633,9 +633,9 @@ var ModEngineUI = (function(){
         }, "30%", "65%", "100%", theme.cyan, function(v){
             state.uiScale = v;
             saveUiScale();
-            // Re-apply the local scale: each label() multiplies by localScale(),
-            // so we just need a fresh layout pass for the new font scale to
-            // take effect on every visible label.
+            
+            
+            
             applyUiScale();
         })).growX().padTop(g(gap.lg)).row();
 
@@ -674,30 +674,30 @@ var ModEngineUI = (function(){
                 state.hotkeyBinds[hotkeyId] = config.hotkeys[hotkeyId];
             }
         }
-        // Load persisted UI scale the first time runtime binds us. Subsequent calls
-        // (e.g. hotkey updates) are no-ops because state.uiScale is already populated.
+        
+        
         loadUiScale();
     }
 
     function isCompact(){
-        // Width class (logical / Scl-normalised width in px):
-        //   narrow  (<600px)  -> very small phone in portrait. Horizontal
-        //                       nav strip, no sidebar, 1-column content.
-        //   medium  (<1200px) -> phones in landscape, small tablets,
-        //                       1280-px laptop windows. Show a thin icon
-        //                       sidebar on the LEFT (icons only, ~96px) so
-        //                       the rest of the screen still gets ~1000+px
-        //                       for content. Old behavior: a single
-        //                       horizontal 76-px nav strip that overflowed
-        //                       on any device wider than ~1100 logical px
-        //                       because 13 nav buttons do not fit.
-        //   wide    (>=1200px)-> full 220-310px sidebar with text + icons.
-        // isCompact() returns true for both narrow and medium (the legacy
-        // boolean used by ~50 ternary expressions through the file). The
-        // finer distinction between narrow and medium is exposed via
-        // state.lastWidthClass / widthClass() and consumed only by the
-        // handful of layout-critical call sites (addSidebar vs
-        // addMediumSidebar vs addCompactNav).
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         var w = 0;
         try{ w = ArcCore.graphics.getWidth(); }catch(eW){ w = 0; }
         var s = mindustryScl();
@@ -711,32 +711,32 @@ var ModEngineUI = (function(){
     }
 
     function widthClass(){
-        // Returns "narrow" / "medium" / "wide" for the current screen, cached per
-        // show() call. Used by code that needs to know the *current* class, not
-        // just whether compact mode is active.
+        
+        
+        
         try{ isCompact(); }catch(eCompact){}
         return state.lastWidthClass || "wide";
     }
 
-    // ========== UI scale (auto + manual override, local font + cap) ==========
-    //
-    // We do NOT touch the global Scl singleton. Instead:
-    //   - The menu itself is always stretched to the full screen
-    //     (dialog.cont.setFillParent(true) + root.grow()), so the layout
-    //     never overlaps or drifts.
-    //   - Text uses setFontScale(scale * state.uiScale) in label() so labels
-    //     shrink on small screens.
-    //   - Hard-coded pixel values that are too large for a small screen are
-    //     clamped via clampUiSize() so a fixed "width(310)" sidebar becomes
-    //     a smaller number on a narrow phone without breaking the layout
-    //     (children using grow()/fillX() still claim the same relative
-    //     space).
-    //   - On narrow screens (<900px) the existing isCompact()/widthClass()
-    //     logic already hides the sidebar, stacks the content, reduces font
-    //     scales, and uses 1-column grids.
-    //
-    // Auto scale kicks in below 1500px screen width. The user can multiply
-    // that via state.uiScale (Theme dialog). Persisted in settings.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     function uiScaleSettingsKey(){
         return "mod-engine-ui-scale-v1";
     }
@@ -775,27 +775,27 @@ var ModEngineUI = (function(){
         }
     }
 
-    // Mindustry/Arc reports a logical density factor via Core.graphics.getDensity():
-    //   - 1.0 on desktop (a 160dpi screen)
-    //   - 2.0..3.0 on a typical Android phone
-    // It is the same value Mindustry's own Scl.scl(1) caches under the hood
-    // (scl = max(round((density/1.5) / 0.5) * 0.5, 1)). We need this number
-    // for two reasons:
-    //   1. The "logical" width Mindustry sees when sizing a dialog is
-    //      physical / Scl, not the raw physical width. A 1080-px phone
-    //      with Scl=1.5 is treated by Mindustry as a 720-px screen.
-    //   2. Every cell.width/.height/.size we hand to Arc is multiplied
-    //      by Scl internally before the layout pass. So a width(560) on
-    //      mobile becomes 560*1.5=840px in the rendered dialog. We
-    //      counter this by feeding width(560) through clampUiSize() so
-    //      the final rendered size is 560 * localScale * Scl.
-    //
-    // We read Scl.scl(1.0) directly. The first call from a mod forces the
-    // JVM-cached value to be evaluated, but Mindustry's own dialogs
-    // already initialised Scl during engine startup, so by the time the
-    // mod loads the cache is already populated with the correct value
-    // for the current platform. We cache the result locally so we never
-    // re-read it.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     function mindustryScl(){
         try{
             var p = Packages.arc.scene.ui.layout.Scl;
@@ -811,9 +811,9 @@ var ModEngineUI = (function(){
         return 1.0;
     }
 
-    // Logical screen width in Mindustry's own units (the same units a
-    // Mindustry UI dialog would size itself for). Dividing by Scl gives
-    // the same number Mindustry's own layout code uses internally.
+    
+    
+    
     function logicalScreenWidth(){
         var w = 1080;
         try{ w = ArcCore.graphics.getWidth(); }catch(eSize){}
@@ -876,11 +876,11 @@ var ModEngineUI = (function(){
         return v;
     }
 
-    // Clamp a hard-coded pixel value to the current scale. Returns the
-    // scaled value, with an 18-px floor so a touch target never
-    // disappears entirely. This is the SINGLE source of per-element
-    // scaling; the rest of the menu reads localScale() through this
-    // helper and through label()'s fontScale multiplier.
+    
+    
+    
+    
+    
     function clampUiSize(value){
         if(value == null) return value;
         var v = Number(value);
@@ -891,16 +891,16 @@ var ModEngineUI = (function(){
         return scaled;
     }
 
-    // Apply the current local scale. The only thing that changes is the per-
-    // label font scale (label() multiplies by localScale()) and clampUiSize()
-    // output, so we just need a fresh layout pass. We rebuild the menu if it
-    // is currently shown AND the scale actually changed. There is one
-    // acceptable case where this rebuilds on top of buildRoot(): the very
-    // first show() of a session, when lastAppliedUiScale was reset to -1 and
-    // labels were created with localScale() = 1.0. That second build is
-    // intentional - it is the only way auto-scale takes effect on first
-    // show, since the actual screen size is only known after the dialog has
-    // been laid out.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     function applyUiScale(){
         var next = localScale();
         var prev = state.lastAppliedUiScale;
@@ -912,17 +912,17 @@ var ModEngineUI = (function(){
         return true;
     }
 
-    // The very first applyUiScale() inside a single show() must run, even if
-    // the value is unchanged, because the menu was just built with localScale()
-    // = 1.0 (lastAppliedUiScale was reset to -1 right before buildRoot).
-    // Without this, auto-scale never appears on first show on mobile: the
-    // post-frame applyUiScale() compares 0.65 to -1, but buildRoot has not
-    // happened yet, so isCompact() returns "wide" and the auto value comes
-    // out as 1.0 — the very first build ends up at scale 1.0 and the post
-    // callback also computes 1.0 because nothing in the dialog has changed.
-    //
-    // We force-apply by clearing lastAppliedUiScale and rebuilding once we
-    // are sure the dialog has its real size on stage.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     function applyAutoScaleOnShow(){
         if(dialog == null || !dialog.isShown()) return;
         var w = 0, h = 0;
@@ -930,7 +930,7 @@ var ModEngineUI = (function(){
             w = ArcCore.graphics.getWidth();
             h = ArcCore.graphics.getHeight();
         }catch(eSize){ return; }
-        if(w < 2 || h < 2) return; // dialog not on stage yet, retry next frame
+        if(w < 2 || h < 2) return; 
         var next = localScale();
         if(Math.abs(next - state.lastAppliedUiScale) < 0.001) return;
         state.lastAppliedUiScale = next;
@@ -938,7 +938,7 @@ var ModEngineUI = (function(){
     }
 
     function isPhoneWidth(){
-        // Desktop layout is intentional even on phones/tablets.
+        
         return false;
     }
 
@@ -947,11 +947,11 @@ var ModEngineUI = (function(){
     }
 
     function textBlockWidth(maxWidth){
-        // Use the logical (Scl-normalised) width, not the raw physical pixels,
-        // so text widths shrink the same way everything else does on a
-        // phone. Without this, a 1500-px design assumption on a 1080-px
-        // phone (logical 720) returns the raw 1080 minus 520 = 560, which
-        // is wider than the actual content area and causes wrap.
+        
+        
+        
+        
+        
         var w = 1080;
         try{ w = ArcCore.graphics.getWidth(); }catch(eSize){}
         var s = mindustryScl();
@@ -989,9 +989,9 @@ var ModEngineUI = (function(){
 
     function iconButton(icon, action){
         var b = new ImageButton(icon, getStyles().icon);
-        // ImageButton keeps its image at the cell size; we shrink the cell via
-        // clampUiSize at the call site. setScaling() does not exist on Arc's
-        // ImageButton, so we do nothing here.
+        
+        
+        
         b.clicked(run(action));
         return b;
     }
@@ -1494,20 +1494,20 @@ var ModEngineUI = (function(){
         operator.add(opText).growX();
         sidebarHost.add(operator).growX().height(clampUiSize(64)).padTop(g(gap.lg)).row();
 
-        // Sidebar is hidden entirely below 1300px (compact mode), but at
-        // 1300-1700px on a phone the 22% rule still leaves a fixed ~280-px
-        // column on a screen where every pixel matters. Scale the column
-        // down so on small non-compact windows the sidebar still shrinks
-        // proportionally.
+        
+        
+        
+        
+        
         parent.add(sidebarHost).width(clampUiSize(Math.min(310, Math.max(220, ArcCore.graphics.getWidth() * 0.22)))).growY();
     }
 
     function addCompactNav(parent){
-        // NARROW mode: tiny phone in portrait. A single 76-px horizontal
-        // strip with mode switcher + nav buttons. Only used when the
-        // logical width is below 600px; the medium class uses
-        // addMediumSidebar() instead so a 1100-px tablet no longer sees
-        // a 13-button overflow bar.
+        
+        
+        
+        
+        
         var s = getStyles();
         var wrapper = new Table();
         wrapper.background(s.d.sidebar);
@@ -1531,12 +1531,12 @@ var ModEngineUI = (function(){
     }
 
     function addMediumSidebar(parent){
-        // MEDIUM mode: 600-1200 logical px (phone landscape, small tablet,
-        // 1280-px laptop window). A vertical icon-only column on the left
-        // so the content area still has ~1000+ px of horizontal room.
-        // The mode switcher (ALL/SANDBOX/USUAL) is collapsed into a
-        // 3-pill block at the bottom of the column; the 13 nav entries
-        // scroll vertically in the column above it.
+        
+        
+        
+        
+        
+        
         var s = getStyles();
         sidebarHost = new Table();
         sidebarHost.background(s.d.sidebar);
@@ -1552,9 +1552,9 @@ var ModEngineUI = (function(){
 
         sidebarHost.add(navScroll).grow().row();
 
-        // Mode switcher at the bottom — horizontal 3-pill, each pill is
-        // 96-px wide. In a 100-px column we stack the pills vertically
-        // and shrink labels to fit.
+        
+        
+        
         modeSwitcherHost = new Table();
         modeSwitcherHost.left();
         var modes = [
@@ -1575,8 +1575,8 @@ var ModEngineUI = (function(){
         }
         sidebarHost.add(modeSwitcherHost).growX().padTop(g(gap.sm)).row();
 
-        // ~96-px icon column on the left; growY so it fills the screen
-        // height. clampUiSize keeps the width scaled on tiny screens.
+        
+        
         parent.add(sidebarHost).width(clampUiSize(96)).growY();
     }
 
@@ -1727,7 +1727,7 @@ var ModEngineUI = (function(){
         }catch(ePane){}
         flowPanel.add(flowPane).growX().height(state.compact ? 260 : 320).padTop(g(gap.lg));
 
-        // Rebuild visible rows only — hiding Table rows via height=0 leaves large gaps in Arc layouts.
+        
         var flowItems = getCoreDisplayItems();
         var flowEmptyLabel = label("NO ITEMS IN CORE STORAGE", s.labelDim, 0.8);
         var lastFlowSignature = null;
@@ -1745,7 +1745,7 @@ var ModEngineUI = (function(){
                 if(amount === 0 && rate === 0) continue;
                 lines.push({item: item, key: key, amount: amount, rate: rate});
             }
-            // Signature: which items + rounded amounts/rates. Avoids full rebuild every frame.
+            
             var signature = lines.length === 0 ? "empty" : lines.map(function(l){
                 return l.key + ":" + l.amount + ":" + l.rate;
             }).join("|");
@@ -1847,14 +1847,14 @@ var ModEngineUI = (function(){
                 var inner = new Table();
                 inner.left();
                 
-                // Color swatch
+                
                 var swatch = new Table();
                 try {
                     swatch.background(makeDrawable(team.color, null, 0, null, false));
                 } catch(eDraw) {}
                 inner.add(swatch).size(clampUiSize(14)).padRight(g(gap.xs));
                 
-                // Team label
+                
                 var teamLabel = label(String(team.name).toUpperCase(), isCurrent ? s.labelCyan : s.labelMuted, 0.72);
                 inner.add(teamLabel).left().growX();
                 
@@ -1907,9 +1907,9 @@ var ModEngineUI = (function(){
         var valueLabel = label(formatter(current), color === theme.cyan ? s.labelCyan : s.labelGold, 1);
         valueLabel.setAlignment(Align.right);
         function fitValue(text){
-            // The displayed text length determines the base font scale.
-            // We also multiply by localScale() so the value label shrinks
-            // on small screens along with every other label in the menu.
+            
+            
+            
             var len = String(text).length;
             var baseScale = len > 20 ? 0.62 : (len > 14 ? 0.74 : (len > 9 ? 0.86 : 1));
             valueLabel.setFontScale(baseScale * localScale());
@@ -2035,10 +2035,10 @@ var ModEngineUI = (function(){
                 var team = playerTeamRef();
                 if(team != null){
                     try{
-                        // All cores belonging to one team share a single common item pool
-                        // (confirmed: Mindustry issue #1417). Reading from one core is enough -
-                        // summing across team.cores() would count the same shared total once
-                        // per core and inflate both the displayed amount and the delta.
+                        
+                        
+                        
+                        
                         var firstCore = team.cores().size > 0 ? team.cores().first() : null;
                         if(firstCore != null){
                             try{ itemFlowCapacity = Math.max(1, firstCore.storageCapacity); }catch(eCapacity){}
@@ -2179,7 +2179,7 @@ var ModEngineUI = (function(){
             if(type.mineTier >= 0 && type.mineSpeed > 0) return true;
         }catch(e){}
         try{
-            // Some V8 / modded units expose mine ability only via commands list.
+            
             if(type.commands != null && Packages.mindustry.ai.UnitCommand != null){
                 if(type.commands.contains(Packages.mindustry.ai.UnitCommand.mineCommand)) return true;
             }
@@ -2218,7 +2218,7 @@ var ModEngineUI = (function(){
             }catch(eInner){}
         }
 
-        // 1) Preferred: team unit list
+        
         try{
             if(team != null){
                 var data = team.data();
@@ -2231,8 +2231,8 @@ var ModEngineUI = (function(){
             }
         }catch(e){}
 
-        // 2) PC/desktop fallback: Groups.unit is more reliable when team.data().units is empty/stale
-        //    (command mode / fog / certain V8 builds).
+        
+        
         if(order.length === 0){
             try{
                 Groups.unit.each(cons(function(unit){
@@ -2241,8 +2241,8 @@ var ModEngineUI = (function(){
             }catch(eGroups){}
         }
 
-        // 3) Still empty: offer mining-capable unit *types* from content so ore buttons remain available.
-        //    Runtime will no-op assign until units are spawned.
+        
+        
         if(order.length === 0){
             try{
                 eachSeq(Vars.content.units(), function(type){
@@ -2277,7 +2277,7 @@ var ModEngineUI = (function(){
             try{
                 var key = String(item.name);
                 if(seen[key]) return;
-                // Skip non-mineable liquids-as-items and hidden content.
+                
                 if(!visibleContent(item)) return;
                 try{ if(item.hardness == null) return; }catch(eH){}
                 seen[key] = true;
@@ -2285,7 +2285,7 @@ var ModEngineUI = (function(){
             }catch(e){}
         }
 
-        // Preferred base ores first (stable order for UI).
+        
         var preferred = ["copper", "lead", "coal", "scrap", "sand", "titanium", "thorium", "beryllium", "tungsten", "oxide", "carbide"];
         for(var p = 0; p < preferred.length; p++){
             try{ pushItem(Vars.content.item(preferred[p])); }catch(ePref){
@@ -2293,7 +2293,7 @@ var ModEngineUI = (function(){
             }
         }
 
-        // Then any other visible items that look mineable (hardness >= 0).
+        
         try{
             eachSeq(Vars.content.items(), function(item){
                 try{
@@ -3328,7 +3328,7 @@ var ModEngineUI = (function(){
         })).height(clampUiSize(42)).minWidth(clampUiSize(140));
         main.add(spawnControls).left().padTop(g(gap.sm)).row();
 
-        // A fixed-height horizontal slot keeps the unit grid stationary while switching sources.
+        
         var modFilterSlot = new Table();
         modFilterSlot.left();
         if(state.unitPlanetFilter === "mods"){
@@ -3431,9 +3431,9 @@ var ModEngineUI = (function(){
         p.add(metricLine("MOV_SPEED", ((unitType != null && unitType.speed != null) ? unitType.speed.toFixed(2) : "0.00") + " T/SEC", Math.min(1, (unitType != null ? unitType.speed : 0) / 10), theme.cyan)).growX().padTop(g(gap.lg)).row();
         p.add(metricLine("BURST_DMG", String(Math.round(unitStatBurst(unitType))), Math.min(1, unitStatBurst(unitType) / 1000), theme.red)).growX().padTop(g(gap.lg)).row();
 
-        // === Beautiful custom spawn position selector ===
-        // Small elegant button in the preview block. After a marker is placed, the same
-        // button simply lets the user place it again at a new world tile.
+        
+        
+        
         var spawnPosRow = new Table();
         spawnPosRow.left();
         var hasSpawnMarker = !!state.spawnMarkerActive;
@@ -3441,7 +3441,7 @@ var ModEngineUI = (function(){
         var spawnBtnStyle = hasSpawnMarker ? s.primary : s.action;
         var spawnBtn = textButton(spawnLabel, spawnBtnStyle, function(){
             if(state.spawnMarkerActive){
-                // User wants to move the marker — drop the old one and re-arm placement.
+                
                 state.spawnMarkerActive = false;
                 state.spawnMarkerArmed = true;
                 state.spawnMarkerX = 0;
@@ -3873,9 +3873,9 @@ var ModEngineUI = (function(){
     }
 
     function gaugeValueScale(text, baseScale){
-        // The base scale shrinks the font so long values fit. We also
-        // multiply by localScale() so the gauge value follows the same
-        // font scale as every other label in the menu.
+        
+        
+        
         var len = String(text).length;
         var s = 1;
         if(len <= 3) s = baseScale;
@@ -4079,8 +4079,8 @@ var ModEngineUI = (function(){
         var rowDead = false;
         var rowUpdateTimer = 0;
         row.update(run(function(){
-            // One refresh every half second is enough for list telemetry. Detailed unit
-            // dialogs retain a faster refresh without keeping dozens of rows hot.
+            
+            
             rowUpdateTimer++;
             if(rowUpdateTimer < 30) return;
             rowUpdateTimer = 0;
@@ -4270,12 +4270,12 @@ var ModEngineUI = (function(){
             if(inspectorWatchTimer < 60) return;
             inspectorWatchTimer = 0;
             var nowCount = worldUnitCountCheap();
-            // New spawns need a fresh page; deaths are compacted once per frame by deploymentRow.
+            
             if(nowCount > inspectorWatchCount){
                 inspectorWatchCount = nowCount;
                 rebuildContent();
             }else if(nowCount < inspectorWatchCount){
-                // just resync the counter for future comparisons, no rebuild
+                
                 inspectorWatchCount = nowCount;
             }
         }));
@@ -4334,8 +4334,8 @@ var ModEngineUI = (function(){
             var cols = state.compact ? 1 : (ArcCore.graphics.getWidth() > 1700 ? 3 : 2);
             var PAGE_SIZE = Math.max(1, state.inspectorPageSize || 100);
 
-            // Step 1: collect a FLAT filtered list of {key, entry} across all categories.
-            // This renders nothing yet - it's just cheap reference filtering.
+            
+            
             var flat = [];
             for(var o = 0; o < order.length; o++){
                 var key = order[o];
@@ -4356,7 +4356,7 @@ var ModEngineUI = (function(){
             var pageEnd = Math.min(flat.length, pageStart + PAGE_SIZE);
             var pageSlice = flat.slice(pageStart, pageEnd);
 
-            // Current filter combination label - "EREKIR T1 AIR" / "ALL" etc.
+            
             function currentGroupLabel(){
                 var parts = [];
                 if(state.inspectorPlanet !== "all") parts.push(state.inspectorPlanet.toUpperCase());
@@ -4373,7 +4373,7 @@ var ModEngineUI = (function(){
             })).growX().height(clampUiSize(46));
             list.add(groupBar).growX().padTop(g(gap.lg)).row();
 
-            // Pagination controls - rendered BEFORE the list so you don't have to scroll down every time
+            
             var pager = new Table();
             pager.left();
             var pagerPrev = textButton("< PREV", s.action, function(){
@@ -4394,8 +4394,8 @@ var ModEngineUI = (function(){
             pager.add(pageSizeField).width(clampUiSize(90));
             list.add(pager).growX().padTop(g(gap.lg)).row();
 
-            // Step 2: render ONLY the current page's slice (max 100 cards), not all 1000+ units at once.
-            // Category header shown whenever the key changes within the slice.
+            
+            
             var grid = null;
             var currentKey = null;
             var indexInGroup = 0;
@@ -4808,13 +4808,13 @@ var ModEngineUI = (function(){
                             try{ supports = build.getMaximumAccepted(item) > 0 && !(build.block instanceof Turret); }catch(eMax){}
                         }
                         if(!supports){
-                            // Unit factories, reconstructors and modded dynamic factories expose
-                            // per-item capacities even when their active plan rejects acceptStack().
+                            
+                            
                             try{ supports = build.block.capacities != null && build.block.capacities[item.id] > 0; }catch(eDynamic){}
                         }
                     }
                 }catch(eBuild){}
-                // Use the union for mixed selections; runtime fills only compatible builds.
+                
                 if(supports){ accepted = true; break; }
             }
             if(accepted) result.push(item);
@@ -4847,8 +4847,8 @@ var ModEngineUI = (function(){
                 for(var gx = 1; gx < 8; gx++) Lines.line(x + width * gx / 8, y, x + width * gx / 8, y + height);
                 for(var gy = 1; gy < 5; gy++) Lines.line(x, y + height * gy / 5, x + width, y + height * gy / 5);
 
-                // Cap scale, not individual icons: one world tile and one icon tile must
-                // always have exactly the same size so adjacent blocks remain contiguous.
+                
+                
                 var scale = Math.min(5.5, Math.min((width - 24) / spanX, (height - 24) / spanY));
                 var usedW = spanX * scale, usedH = spanY * scale;
                 var ox = x + (width - usedW) / 2, oy = y + (height - usedH) / 2;
@@ -5115,10 +5115,10 @@ var ModEngineUI = (function(){
         promptFieldStyle.fontColor = s.labelDim.fontColor;
         var promptField = new TextField(state.consoleInputText || "", promptFieldStyle);
         promptField.setMessageText("> ENTER_COMMAND_OR_JS_EXPRESSION");
-        // Deliberately NOT calling setMaxLength() - libGDX TextField defaults to unlimited
-        // input length. The previous implementation used Vars.ui.showTextInput(), the
-        // engine's own system dialog, which has an internal field we don't control and
-        // can't verify the limit of. This embedded field removes that dependency entirely.
+        
+        
+        
+        
         promptField.changed(run(function(){
             state.consoleInputText = String(promptField.getText());
         }));
@@ -5342,11 +5342,11 @@ var ModEngineUI = (function(){
     function buildPlayer(parent){
         var s = getStyles();
 
-        // Hard-coded widths in the Player block were picked for a 1500-px
-        // design. On mobile they cause the inner panels to overflow or
-        // refuse to shrink. We feed every hard-coded number through
-        // clampUiSize() so the whole block (head + two columns + summary
-        // cards) collapses together with the rest of the menu.
+        
+        
+        
+        
+        
         var head = new Table();
         head.top().left();
         var intro = new Table();
@@ -5618,7 +5618,7 @@ var ModEngineUI = (function(){
             findItemByName("thorium"),
             findItemByName("sand")
         ];
-        // Keep only non-null ores.
+        
         var cleaned = [];
         for(var ri = 0; ri < resourceOptions.length; ri++) if(resourceOptions[ri] != null) cleaned.push(resourceOptions[ri]);
         resourceOptions = cleaned;
@@ -5788,11 +5788,11 @@ var ModEngineUI = (function(){
         root.background(s.d.screen);
         root.top().left();
 
-        // Sidebar layout by width class. wide = full 220-310px sidebar,
-        // medium = thin 96-px icon column (addMediumSidebar), narrow = no
-        // sidebar at all (the horizontal nav strip is added below in
-        // addCompactNav). The narrow class is the only one that still
-        // uses the old horizontal 76-px nav strip.
+        
+        
+        
+        
+        
         if(layoutCls === "wide"){
             try{ addSidebar(root); Log.info("[mod-engine-ui] buildRoot: addSidebar ok"); }catch(eS){ Log.err("[mod-engine-ui] buildRoot: addSidebar FAILED", eS); throw eS; }
         }else if(layoutCls === "medium"){
@@ -5839,9 +5839,9 @@ var ModEngineUI = (function(){
                 savedNavScrollX = navScrollPane.getScrollX();
             }
         }catch(eNav){}
-        // No need to call applyUiScale here: localScale() is read fresh on
-        // every label() call, so the next time the menu is rebuilt the new
-        // value is used automatically.
+        
+        
+        
         dialog.cont.clear();
         buildRoot();
         dialog.cont.add(root).grow();
