@@ -2336,6 +2336,21 @@ var ModEngineRuntime = (function(){
             notify("AUTO REPAIR: " + payload.value);
             return;
         }
+        if(cmd === "player:setTeam"){
+            try{
+                var tid = payload.teamId;
+                var targetTeam = Packages.mindustry.game.Team.get(tid);
+                if (targetTeam != null && Vars.player != null) {
+                    Vars.player.team(targetTeam);
+                    try{ Vars.fogControl.forceUpdate(targetTeam); }catch(eFog){}
+                    notify("TEAM CHANGED TO " + String(targetTeam.name).toUpperCase());
+                }
+            } catch(e) {
+                Log.err("Error changing player team: " + e);
+            }
+            try{ if(ui != null) ui.rebuild(); }catch(eUI){}
+            return;
+        }
         if(cmd.indexOf("player:status:") === 0){
             applyPlayerStatus(cmd);
             notify("STATUS: " + cmd.substring("player:status:".length));
