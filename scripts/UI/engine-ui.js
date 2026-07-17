@@ -20,6 +20,7 @@ var Label = Packages.arc.scene.ui.Label;
 var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
+var KeyCode = Packages.arc.input.KeyCode;
 
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
@@ -553,9 +554,9 @@ var ModEngineUI = (function(){
             state.menuOpacity = v;
         })).growX().padTop(gap.lg).row();
 
-        body.add(liveSliderBlock("UI SCALE (MANUAL OVERRIDE)", 0.35, 1.0, 0.01, state.uiScale, function(v){
+        body.add(liveSliderBlock("UI SCALE (MANUAL OVERRIDE)", 0.30, 1.0, 0.01, state.uiScale, function(v){
             return Math.round(v * 100) + "%";
-        }, "35%", "68%", "100%", theme.cyan, function(v){
+        }, "30%", "65%", "100%", theme.cyan, function(v){
             state.uiScale = v;
             saveUiScale();
             // Re-apply the local scale: each label() multiplies by localScale(),
@@ -630,7 +631,7 @@ var ModEngineUI = (function(){
         var logicalW = w / s;
         if(state.lastScreenWidth === w && state.lastWidthClass != null) return state.lastWidthClass !== "wide";
         state.lastScreenWidth = w;
-        var cls = logicalW < 600 ? "narrow" : (logicalW < 1200 ? "medium" : "wide");
+        var cls = logicalW < 600 ? "narrow" : (logicalW < 1100 ? "medium" : "wide");
         state.lastWidthClass = cls;
         return cls !== "wide";
     }
@@ -670,7 +671,7 @@ var ModEngineUI = (function(){
         try{
             var saved = ArcCore.settings.getFloat(uiScaleSettingsKey(), 1.0);
             if(isNaN(saved)) saved = 1.0;
-            state.uiScale = Math.max(0.35, Math.min(1.0, saved));
+            state.uiScale = Math.max(0.30, Math.min(1.0, saved));
         }catch(e){
             state.uiScale = 1.0;
         }
@@ -708,14 +709,26 @@ var ModEngineUI = (function(){
         try{
             var p = Packages.arc.scene.ui.layout.Scl;
             var v = p.scl(1.0);
-            if(v > 0 && v < 10) return v;
+            if(v > 1.05 && v < 10) return v;
         }catch(e){}
+
+        var isMobile = false;
+        try{ isMobile = !!Vars.mobile; }catch(eM){}
+        if(!isMobile && ArcCore.app != null){
+            try{ if(ArcCore.app.isMobile) isMobile = !!ArcCore.app.isMobile(); }catch(eM2){}
+        }
+
         try{
             var d = Number(ArcCore.graphics.getDensity());
             if(!isNaN(d) && d > 0){
-                return Math.max(Math.round((d / 1.5) / 0.5) * 0.5, 1.0);
+                if(isMobile){
+                    return Math.max(1.0, d);
+                }else{
+                    return Math.max(1.0, Math.round((d / 1.5) / 0.5) * 0.5);
+                }
             }
         }catch(e2){}
+
         return 1.0;
     }
 
@@ -723,11 +736,6 @@ var ModEngineUI = (function(){
     // Mindustry UI dialog would size itself for). Dividing by Scl gives
     // the same number Mindustry's own layout code uses internally.
     function logicalScreenWidth(){
-        try{
-            if(ArcCore.scene != null && ArcCore.scene.getWidth() > 0){
-                return ArcCore.scene.getWidth();
-            }
-        }catch(e){}
         var w = 1080;
         try{ w = ArcCore.graphics.getWidth(); }catch(eSize){}
         if(w <= 0) w = 1080;
@@ -737,11 +745,6 @@ var ModEngineUI = (function(){
     }
 
     function logicalScreenHeight(){
-        try{
-            if(ArcCore.scene != null && ArcCore.scene.getHeight() > 0){
-                return ArcCore.scene.getHeight();
-            }
-        }catch(e){}
         var h = 720;
         try{ h = ArcCore.graphics.getHeight(); }catch(eSize){}
         if(h <= 0) h = 720;
@@ -757,16 +760,16 @@ var ModEngineUI = (function(){
 
         var refW = 1350.0;
         var refH = 700.0;
-        var minScale = 0.35;
+        var minScale = 0.30;
 
         if(cls === "medium"){
             refW = 850.0;
-            refH = 580.0;
-            minScale = 0.35;
+            refH = 480.0;
+            minScale = 0.30;
         }else if(cls === "narrow"){
             refW = 380.0;
-            refH = 580.0;
-            minScale = 0.40;
+            refH = 480.0;
+            minScale = 0.35;
         }
 
         var wRatio = lw / refW;
@@ -782,14 +785,14 @@ var ModEngineUI = (function(){
         var auto = autoUiScale();
         var manual = state.uiScale == null ? 1.0 : state.uiScale;
         var combined = auto * manual;
-        if(combined < 0.25) combined = 0.25;
+        if(combined < 0.20) combined = 0.20;
         if(combined > 1.0) combined = 1.0;
         return combined;
     }
 
     function localScale(){
         var v = effectiveUiScale();
-        if(v < 0.25) v = 0.25;
+        if(v < 0.20) v = 0.20;
         if(v > 1.0) v = 1.0;
         return v;
     }
