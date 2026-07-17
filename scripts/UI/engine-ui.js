@@ -3326,14 +3326,13 @@ var ModEngineUI = (function(){
         spawnControls.add(textButton("+", s.action, function(){ state.unitSpawnAmount = Math.min(100, state.unitSpawnAmount + 1); rebuildContent(); })).size(clampUiSize(42)).padLeft(g(gap.xs)).padRight(g(gap.md));
         spawnControls.add(textButton("SPAWN", s.primary, function(){
             if(state.selectedUnit != null) callHandler("spawnUnit", {unit: state.selectedUnit, contentName: String(state.selectedUnit.name), amount: state.unitSpawnAmount, enemy: state.unitSpawnEnemy});
-        })).height(clampUiSize(42)).minWidth(clampUiSize(140));
-        main.add(spawnControls).left().padTop(g(gap.sm)).row();
-        var replaceRow = new Table();
-        replaceRow.left();
-        replaceRow.add(textButton("REPLACE MY UNIT WITH SELECTED", s.action, function(){
+        })).height(clampUiSize(42)).minWidth(clampUiSize(140)).padRight(g(gap.sm));
+
+        spawnControls.add(textButton("SET", s.action, function(){
             if(state.selectedUnit != null) callHandler("unitAction", {action: "replacePlayer", unitType: state.selectedUnit});
-        })).height(clampUiSize(44)).growX();
-        main.add(replaceRow).growX().padTop(g(gap.sm)).row();
+        })).height(clampUiSize(42)).width(clampUiSize(80));
+
+        main.add(spawnControls).left().padTop(g(gap.sm)).row();
 
         var modFilterSlot = new Table();
         modFilterSlot.left();
