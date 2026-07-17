@@ -21,7 +21,6 @@ var TextField = Packages.arc.scene.ui.TextField;
 var ScrollPane = Packages.arc.scene.ui.ScrollPane;
 var InputListener = Packages.arc.scene.event.InputListener;
 var KeyCode = Packages.arc.input.KeyCode;
-
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
 var Tex = Packages.mindustry.ui.Tex;
@@ -709,26 +708,14 @@ var ModEngineUI = (function(){
         try{
             var p = Packages.arc.scene.ui.layout.Scl;
             var v = p.scl(1.0);
-            if(v > 1.05 && v < 10) return v;
+            if(v > 0 && v < 10) return v;
         }catch(e){}
-
-        var isMobile = false;
-        try{ isMobile = !!Vars.mobile; }catch(eM){}
-        if(!isMobile && ArcCore.app != null){
-            try{ if(ArcCore.app.isMobile) isMobile = !!ArcCore.app.isMobile(); }catch(eM2){}
-        }
-
         try{
             var d = Number(ArcCore.graphics.getDensity());
             if(!isNaN(d) && d > 0){
-                if(isMobile){
-                    return Math.max(1.0, d);
-                }else{
-                    return Math.max(1.0, Math.round((d / 1.5) / 0.5) * 0.5);
-                }
+                return Math.max(Math.round((d / 1.5) / 0.5) * 0.5, 1.0);
             }
         }catch(e2){}
-
         return 1.0;
     }
 
@@ -5928,6 +5915,9 @@ var ModEngineUI = (function(){
         },
         setTab: function(tab){
             navigateTo(tab);
+        },
+        scaleFactor: function(){
+            return localScale();
         },
         showBuildSelection: function(builds){
             showBuildSelectionDialog(builds);
