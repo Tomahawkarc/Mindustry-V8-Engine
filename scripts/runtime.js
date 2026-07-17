@@ -2224,9 +2224,10 @@ var ModEngineRuntime = (function(){
             return;
         }
         if(cmd === "builds:godmode"){
-            Vars.state.rules.blockHealthMultiplier = payload.value ? 9999 : 1;
+            var teamRulesG = Vars.state.rules.teams.get(playerTeam());
+            teamRulesG.blockHealthMultiplier = payload.value ? 9999 : 1;
             healAllStructures();
-            notify("STRUCTURE GODMODE: " + payload.value);
+            notify("STRUCTURE GODMODE: " + payload.value + " (TEAM ONLY)");
             try{ if(ui != null) ui.invalidateBuildOverview(); }catch(eCache){}
             try{ if(ui != null && ui.state != null && ui.state.tab === "builds") ui.rebuild(); }catch(eUi){}
             return;
@@ -2320,8 +2321,13 @@ var ModEngineRuntime = (function(){
             return;
         }
         if(cmd === "player:resetStats"){
-            Vars.state.rules.unitHealthMultiplier = 1;
-            Vars.state.rules.unitMineSpeedMultiplier = 1;
+            var teamRulesR = Vars.state.rules.teams.get(playerTeam());
+            teamRulesR.unitHealthMultiplier = 1;
+            teamRulesR.unitMineSpeedMultiplier = 1;
+            teamRulesR.unitDamageMultiplier = 1;
+            teamRulesR.blockDamageMultiplier = 1;
+            teamRulesR.blockHealthMultiplier = 1;
+            
             capturePlayerDefaults();
             var puReset = playerUnit();
             if(ui != null && ui.state != null && playerDefaults != null){
@@ -2336,7 +2342,7 @@ var ModEngineRuntime = (function(){
                 try{ puReset.type.speed = playerDefaults.speed; }catch(e2){}
                 try{ puReset.type.mineSpeed = playerDefaults.mineSpeed; }catch(e3){}
             }
-            notify("PLAYER STATS RESET");
+            notify("PLAYER & TEAM STATS RESET");
             try{ if(ui != null) ui.rebuild(); }catch(e4){}
             return;
         }
@@ -2396,15 +2402,19 @@ var ModEngineRuntime = (function(){
         }
         if(cmd === "weapon:applyUnits"){
             if(ui != null && ui.state != null){
-                Vars.state.rules.unitDamageMultiplier = Math.max(1, ui.state.weaponGlobalDamage);
+                var teamRules = Vars.state.rules.teams.get(playerTeam());
+                teamRules.unitDamageMultiplier = Math.max(1, ui.state.weaponGlobalDamage);
+                
                 buffWeapons(ui.state.unitFireRate, ui.state.weaponSpread, ui.state.weaponBulletDamage, ui.state.weaponRange);
                 unitRangeCache = {};
             }
-            notify("UNIT WEAPON PARAMETERS APPLIED");
+            notify("UNIT WEAPONS APPLIED (TEAM DAMAGE MULT)");
             return;
         }
         if(cmd === "weapon:resetUnits"){
-            Vars.state.rules.unitDamageMultiplier = 1;
+            var teamRulesReset = Vars.state.rules.teams.get(playerTeam());
+            teamRulesReset.unitDamageMultiplier = 1;
+            
             resetWeapons();
             unitRangeCache = {};
             if(ui != null && ui.state != null){
@@ -2428,7 +2438,7 @@ var ModEngineRuntime = (function(){
                     ui.state.weaponSpread = 0.5;
                 }
             }
-            notify("UNIT WEAPON PARAMETERS RESET");
+            notify("UNIT WEAPONS RESET");
             try{ if(ui != null) ui.rebuild(); }catch(e){}
             return;
         }
@@ -2437,15 +2447,20 @@ var ModEngineRuntime = (function(){
                 var turretReloadMul = ui.state.turretReloadMult >= 50 ? 0 : (1 / Math.max(0.1, ui.state.turretReloadMult));
                 var turretRangeMul = 1 + ui.state.turretRangeBoost / 100;
                 var turretSpreadVal = ui.state.turretSpread == null ? 0 : ui.state.turretSpread;
+                
                 buffTurrets(turretReloadMul, turretSpreadVal, turretRangeMul);
-                Vars.state.rules.blockDamageMultiplier = 1 + ui.state.turretDamageBoost / 100;
+                
+                var teamRulesT = Vars.state.rules.teams.get(playerTeam());
+                teamRulesT.blockDamageMultiplier = 1 + ui.state.turretDamageBoost / 100;
             }
-            notify("TURRET PARAMETERS APPLIED");
+            notify("TURRET PARAMETERS APPLIED (TEAM MULT)");
             return;
         }
         if(cmd === "weapon:resetTurrets"){
             resetTurrets();
-            Vars.state.rules.blockDamageMultiplier = 1;
+            var teamRulesRT = Vars.state.rules.teams.get(playerTeam());
+            teamRulesRT.blockDamageMultiplier = 1;
+            
             if(ui != null && ui.state != null){
                 ui.state.turretReloadMult = 1.0;
                 ui.state.turretRangeBoost = 0;
@@ -2476,18 +2491,23 @@ var ModEngineRuntime = (function(){
             return;
         }
         if(cmd === "mining:buildBoost"){
-            Vars.state.rules.buildSpeedMultiplier = payload.value ? 2 : 1;
-            notify("BUILD BOOST: " + payload.value);
+            var teamRulesBB = Vars.state.rules.teams.get(playerTeam());
+            teamRulesBB.buildSpeedMultiplier = payload.value ? 2 : 1;
+            notify("BUILD BOOST: " + payload.value + " (TEAM ONLY)");
             return;
         }
         if(cmd === "mining:efficiency"){
-            Vars.state.rules.unitMineSpeedMultiplier = payload.value ? 2 : 1;
-            notify("EFFICIENCY BOOST: " + payload.value);
+            var teamRulesE = Vars.state.rules.teams.get(playerTeam());
+            teamRulesE.unitMineSpeedMultiplier = payload.value ? 2 : 1;
+            notify("EFFICIENCY BOOST: " + payload.value + " (TEAM ONLY)");
             return;
         }
         if(cmd === "mining:setSpeed"){
             var speedVal = payload.value == null ? 1 : payload.value;
-            try{ Vars.state.rules.unitMineSpeedMultiplier = Math.max(0.1, speedVal); }catch(eSpeed){}
+            try{ 
+                var teamRulesSS = Vars.state.rules.teams.get(playerTeam());
+                teamRulesSS.unitMineSpeedMultiplier = Math.max(0.1, speedVal); 
+            }catch(eSpeed){}
             return;
         }
         if(cmd === "mining:applyGlobalBuffs"){
@@ -2831,19 +2851,20 @@ var ModEngineRuntime = (function(){
         if(action === "replacePlayer"){
             var puReplace = playerUnit();
             var replacement = type;
-            if(puReplace == null || replacement == null){ notify("UNIT REPLACEMENT FAILED"); return; }
+            if(replacement == null){ notify("NO UNIT TYPE SELECTED"); return; }
             try{
-                var oldTeam = teamOf(puReplace);
-                var xReplace = puReplace.x;
-                var yReplace = puReplace.y;
-                var newUnit = replacement.create(oldTeam);
-                newUnit.set(xReplace, yReplace);
-                try{ newUnit.health = Math.min(newUnit.maxHealth, puReplace.health); }catch(eHealth){}
-                try{ puReplace.kill(); }catch(eKill){}
-                notify("UNIT REPLACED: " + replacement.name);
+                var targetTeam = playerTeam();
+                var rx = Vars.player.x, ry = Vars.player.y;
+                if(puReplace != null){ rx = puReplace.x; ry = puReplace.y; }
+                
+                var newUnit = replacement.spawn(targetTeam, rx, ry);
+                Vars.player.unit(newUnit);
+                
+                if(puReplace != null && puReplace != newUnit) puReplace.kill();
+                notify("CHAR REPLACED: " + replacement.localizedName);
             }catch(eReplace){
                 Log.err("Unit replacement failed", eReplace);
-                notify("UNIT REPLACEMENT FAILED");
+                notify("REPLACEMENT FAILED");
             }
             return;
         }
