@@ -972,16 +972,11 @@ var ModEngineRuntime = (function(){
         quickHudRoot.setFillParent(true);
         quickHudRoot.touchable = Touchable.childrenOnly;
         var holder = new Table();
-        quickHudButton = new Button(Styles.clearNonei);
-        try{
-            quickHudButton.getStyle().checked = Styles.defaultt.up;
-            quickHudButton.getStyle().checkedOver = Styles.defaultt.over;
-            quickHudButton.getStyle().over = Styles.defaultt.over;
-        }catch(eButtonStyle){}
+        var nativeCommandStyle = null;
+        try{ if(quickHudAnchor != null && quickHudAnchor.getStyle != null) nativeCommandStyle = quickHudAnchor.getStyle(); }catch(eNativeStyle){}
+        quickHudButton = nativeCommandStyle != null ? new TextButton("SELECT", nativeCommandStyle) : new TextButton("SELECT", Styles.defaultt);
         quickHudButton.name = "mod-engine-selection";
         quickHudButton.left();
-        quickHudButton.image(Icon.wrench).size(26).padLeft(10).padRight(8);
-        quickHudButton.add("SELECT").left().growX().padRight(10);
         quickHudButton.clicked(run(function(){
             if(ui != null && ui.state != null){
                 beginBuildSelection();
