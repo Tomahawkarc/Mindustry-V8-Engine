@@ -616,25 +616,24 @@ var ModEngineUI = (function(){
     }
 
     function isCompact(){
-        // Width class:
-        //   narrow  (<900px)  -> compact single-column layout, no sidebar
-        //   medium  (<1300px) -> no sidebar, content stacked vertically
-        //   wide    (>=1300px)-> full sidebar + wide layout
-        // isCompact() is true for BOTH narrow and medium — the sidebar is
-        // hidden for anything below 1300px because a 310-px sidebar + the
-        // existing content widths simply do not fit on a 1280-px laptop.
-        // The class is cached per-show via state.lastWidthClass so a single
-        // buildRoot() call does not flicker between modes when
-        // graphics.getWidth() is queried from nested layout code.
-        //
-        // On Android graphics.getWidth() returns the *physical* pixel width
-        // (e.g. 1080) while Mindustry itself sees a *logical* width of
-        // physical / Scl (e.g. 720). Using the raw physical width on a
-        // phone reports "wide" even though the dialog will be drawn at the
-        // smaller logical size — so the sidebar and the 1500-px design
-        // assumption both go wrong. We compare against the logical width
-        // so PC-at-1280 and a phone with 1080-physical / 720-logical land
-        // in the same class.
+        // Width class (logical / Scl-normalised width in px):
+        //   narrow  (<600px)  -> very small phone in portrait. Horizontal
+        //                       nav strip, no sidebar, 1-column content.
+        //   medium  (<1200px) -> phones in landscape, small tablets,
+        //                       1280-px laptop windows. Show a thin icon
+        //                       sidebar on the LEFT (icons only, ~96px) so
+        //                       the rest of the screen still gets ~1000+px
+        //                       for content. Old behavior: a single
+        //                       horizontal 76-px nav strip that overflowed
+        //                       on any device wider than ~1100 logical px
+        //                       because 13 nav buttons do not fit.
+        //   wide    (>=1200px)-> full 220-310px sidebar with text + icons.
+        // isCompact() returns true for both narrow and medium (the legacy
+        // boolean used by ~50 ternary expressions through the file). The
+        // finer distinction between narrow and medium is exposed via
+        // state.lastWidthClass / widthClass() and consumed only by the
+        // handful of layout-critical call sites (addSidebar vs
+        // addMediumSidebar vs addCompactNav).
         var w = 0;
         try{ w = ArcCore.graphics.getWidth(); }catch(eW){ w = 0; }
         var s = mindustryScl();
@@ -642,7 +641,7 @@ var ModEngineUI = (function(){
         var logicalW = w / s;
         if(state.lastScreenWidth === w && state.lastWidthClass != null) return state.lastWidthClass !== "wide";
         state.lastScreenWidth = w;
-        var cls = logicalW < 900 ? "narrow" : (logicalW < 1300 ? "medium" : "wide");
+        var cls = logicalW < 600 ? "narrow" : (logicalW < 1200 ? "medium" : "wide");
         state.lastWidthClass = cls;
         return cls !== "wide";
     }
@@ -907,6 +906,9 @@ var ModEngineUI = (function(){
 
     function iconButton(icon, action){
         var b = new ImageButton(icon, getStyles().icon);
+        // ImageButton keeps its image at the cell size; we shrink the cell via
+        // clampUiSize at the call site. setScaling() does not exist on Arc's
+        // ImageButton, so we do nothing here.
         b.clicked(run(action));
         return b;
     }
@@ -916,6 +918,11 @@ var ModEngineUI = (function(){
         // Prevent sticky "checked/disabled" darkening on ordinary action buttons.
         try{ b.setProgrammaticChangeEvents(false); }catch(eProg){}
         try{ b.setDisabled(false); }catch(eDis){}
+        // Arc's TextButton uses style.font directly and ignores setFontScale()
+        // when called on the style. We have to apply the per-button scale to
+        // the button's own label after construction. setFontScale() returns
+        // void; wrap in try so older Arc builds that lack it do not crash.
+        try{ b.setFontScale(localScale()); }catch(eFs){}
         b.clicked(run(action));
         return b;
     }
@@ -1412,6 +1419,11 @@ var ModEngineUI = (function(){
     }
 
     function addCompactNav(parent){
+        // NARROW mode: tiny phone in portrait. A single 76-px horizontal
+        // strip with mode switcher + nav buttons. Only used when the
+        // logical width is below 600px; the medium class uses
+        // addMediumSidebar() instead so a 1100-px tablet no longer sees
+        // a 13-button overflow bar.
         var s = getStyles();
         var wrapper = new Table();
         wrapper.background(s.d.sidebar);
@@ -1432,6 +1444,56 @@ var ModEngineUI = (function(){
         wrapper.add(pane).grow();
         parent.add(wrapper).growX().height(clampUiSize(76)).row();
         sidebarHost = navTable;
+    }
+
+    function addMediumSidebar(parent){
+        // MEDIUM mode: 600-1200 logical px (phone landscape, small tablet,
+        // 1280-px laptop window). A vertical icon-only column on the left
+        // so the content area still has ~1000+ px of horizontal room.
+        // The mode switcher (ALL/SANDBOX/USUAL) is collapsed into a
+        // 3-pill block at the bottom of the column; the 13 nav entries
+        // scroll vertically in the column above it.
+        var s = getStyles();
+        sidebarHost = new Table();
+        sidebarHost.background(s.d.sidebar);
+        sidebarHost.top().left();
+        sidebarHost.margin(gap.sm);
+
+        var navScroll = new ScrollPane(new Table(), s.pane);
+        navScrollPane = navScroll;
+        var navTable = navScroll.getWidget();
+        navTable.top().left();
+        navHost = navTable;
+        buildNavInto(navTable, true);
+
+        sidebarHost.add(navScroll).grow().row();
+
+        // Mode switcher at the bottom — horizontal 3-pill, each pill is
+        // 96-px wide. In a 100-px column we stack the pills vertically
+        // and shrink labels to fit.
+        modeSwitcherHost = new Table();
+        modeSwitcherHost.left();
+        var modes = [
+            {text: "ALL", value: "all", activeStyle: s.action, activeColor: theme.cyan},
+            {text: "BOX", value: "sandbox", activeStyle: s.danger, activeColor: theme.red},
+            {text: "USE", value: "usual", activeStyle: s.primary, activeColor: theme.gold}
+        ];
+        for(var mi = 0; mi < modes.length; mi++){
+            (function(m){
+                var active = (state.navMode || "all") === m.value;
+                var b = new Button(active ? s.activeTile : s.tile);
+                b.setChecked(active);
+                b.clicked(run(function(){ switchNavMode(m.value); }));
+                b.add(label(m.text, active ? s.labelPrimary : s.labelMuted, 0.7)).center();
+                modeSwitcherHost.add(b).growX().height(clampUiSize(36)).padTop(gap.xs);
+                modeSwitcherHost.row();
+            })(modes[mi]);
+        }
+        sidebarHost.add(modeSwitcherHost).growX().padTop(gap.sm).row();
+
+        // ~96-px icon column on the left; growY so it fills the screen
+        // height. clampUiSize keeps the width scaled on tiny screens.
+        parent.add(sidebarHost).width(clampUiSize(96)).growY();
     }
 
     function buildNavInto(table, horizontal){
@@ -5583,21 +5645,29 @@ var ModEngineUI = (function(){
         try{ Log.info("[mod-engine-ui] buildRoot: enter, compact=" + state.compact); }catch(eLog){}
         var s = getStyles();
         state.compact = isCompact();
-        try{ Log.info("[mod-engine-ui] buildRoot: isCompact ok, compact=" + state.compact); }catch(eLog){}
+        var layoutCls = state.lastWidthClass || (state.compact ? "medium" : "wide");
+        try{ Log.info("[mod-engine-ui] buildRoot: isCompact ok, compact=" + state.compact + " class=" + layoutCls); }catch(eLog){}
         root = new Table();
         try{ Log.info("[mod-engine-ui] buildRoot: new root ok"); }catch(eLog){}
         root.background(s.d.screen);
         root.top().left();
 
-        if(!state.compact){
+        // Sidebar layout by width class. wide = full 220-310px sidebar,
+        // medium = thin 96-px icon column (addMediumSidebar), narrow = no
+        // sidebar at all (the horizontal nav strip is added below in
+        // addCompactNav). The narrow class is the only one that still
+        // uses the old horizontal 76-px nav strip.
+        if(layoutCls === "wide"){
             try{ addSidebar(root); Log.info("[mod-engine-ui] buildRoot: addSidebar ok"); }catch(eS){ Log.err("[mod-engine-ui] buildRoot: addSidebar FAILED", eS); throw eS; }
+        }else if(layoutCls === "medium"){
+            try{ addMediumSidebar(root); Log.info("[mod-engine-ui] buildRoot: addMediumSidebar ok"); }catch(eS){ Log.err("[mod-engine-ui] buildRoot: addMediumSidebar FAILED", eS); throw eS; }
         }
 
         var main = new Table();
         main.top().left();
         main.background(s.d.screen);
         try{ addTopBar(main); Log.info("[mod-engine-ui] buildRoot: addTopBar ok"); }catch(eT){ Log.err("[mod-engine-ui] buildRoot: addTopBar FAILED", eT); throw eT; }
-        if(state.compact){
+        if(layoutCls === "narrow"){
             try{ addCompactNav(main); Log.info("[mod-engine-ui] buildRoot: addCompactNav ok"); }catch(eN){ Log.err("[mod-engine-ui] buildRoot: addCompactNav FAILED", eN); throw eN; }
         }
 
