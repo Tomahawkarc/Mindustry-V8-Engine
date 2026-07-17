@@ -965,15 +965,28 @@ var ModEngineRuntime = (function(){
             return;
         }
         try{ if(quickHudRoot != null && quickHudRoot.hasParent()) return; }catch(eParent){}
-
         quickHudAnchor = findCommandHudButton(Vars.ui.hudGroup);
         quickHudRoot = new Table();
         quickHudRoot.name = "mod-engine-selection-root";
         quickHudRoot.setFillParent(true);
         quickHudRoot.touchable = Touchable.childrenOnly;
         var holder = new Table();
+        holder.name = "mod-engine-selection-extension";
+        holder.background(Styles.black6);
+        holder.top().left();
         var nativeCommandStyle = null;
         try{ if(quickHudAnchor != null && quickHudAnchor.getStyle != null) nativeCommandStyle = quickHudAnchor.getStyle(); }catch(eNativeStyle){}
+        try{
+            if(nativeCommandStyle == null && quickHudAnchor != null){
+                var anchorParent = quickHudAnchor.parent;
+                if(anchorParent != null && anchorParent.parent != null){
+                    var gp = anchorParent.parent;
+                    if(gp.background != null){
+                        holder.background(gp.background);
+                    }
+                }
+            }
+        }catch(eBg){}
         quickHudButton = nativeCommandStyle != null ? new TextButton("SELECT", nativeCommandStyle) : new TextButton("SELECT", Styles.defaultt);
         quickHudButton.name = "mod-engine-selection";
         quickHudButton.left();
@@ -987,13 +1000,15 @@ var ModEngineRuntime = (function(){
             var ql = quickHudButton.getLabel != null ? quickHudButton.getLabel() : null;
             if(ql != null) ql.setFontScale(0.85 * s);
         }catch(eLabel){}
-        holder.add(quickHudButton).size(155 * s, 48 * s).tooltip("Select structures: " + String(ui.state.buildSelectionFilter || "all"));
+        holder.add(quickHudButton).size(165 * s, 52 * s).tooltip("Select structures: " + String(ui.state.buildSelectionFilter || "all"));
+        holder.image().color(Pal.gray).width(4 * s).fillY();
+        holder.row();
+        holder.image().color(Pal.gray).height(4 * s).fillX().colspan(2);
         holder.pack();
         quickHudRoot.addChild(holder);
         var quickHudShown = null;
         var quickHudPosTimer = 0;
         var selectionPos = new Vec2();
-
         quickHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
@@ -1003,37 +1018,27 @@ var ModEngineRuntime = (function(){
                     quickHudShown = enabled;
                     holder.visible = enabled;
                     if(enabled){
-                        quickHudPosTimer = 999; 
+                        quickHudPosTimer = 999;
                     }
                 }
                 if(!enabled) return;
-
                 quickHudPosTimer++;
                 if(quickHudPosTimer < 30) return;
                 quickHudPosTimer = 0;
-
                 if(quickHudAnchor == null || !quickHudAnchor.hasParent()) quickHudAnchor = findCommandHudButton(Vars.ui.hudGroup);
                 if(quickHudAnchor != null){
                     selectionPos.set(0, 0);
                     quickHudAnchor.localToStageCoordinates(selectionPos);
                     holder.pack();
-
-                    
-                    
-                    
                     if((quickHudPosTimer % 4) === 0){
                         HudPositioning.forceRefresh();
                     }
-
                     if(isMobilePlatform){
-                        
-                        
                         holder.setPosition(
                             selectionPos.x + quickHudAnchor.getWidth(),
                             selectionPos.y + quickHudAnchor.getHeight() - holder.getHeight()
                         );
                     }else{
-                        
                         holder.setPosition(
                             selectionPos.x,
                             selectionPos.y + quickHudAnchor.getHeight() - holder.getHeight()
