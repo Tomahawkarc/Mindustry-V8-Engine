@@ -616,11 +616,23 @@ var ModEngineUI = (function(){
         // The class is cached per-show via state.lastWidthClass so a single
         // buildRoot() call does not flicker between modes when
         // graphics.getWidth() is queried from nested layout code.
+        //
+        // On Android graphics.getWidth() returns the *physical* pixel width
+        // (e.g. 1080) while Mindustry itself sees a *logical* width of
+        // physical / Scl (e.g. 720). Using the raw physical width on a
+        // phone reports "wide" even though the dialog will be drawn at the
+        // smaller logical size — so the sidebar and the 1500-px design
+        // assumption both go wrong. We compare against the logical width
+        // so PC-at-1280 and a phone with 1080-physical / 720-logical land
+        // in the same class.
         var w = 0;
         try{ w = ArcCore.graphics.getWidth(); }catch(eW){ w = 0; }
+        var s = mindustrySclFactor();
+        if(s < 1) s = 1;
+        var logicalW = w / s;
         if(state.lastScreenWidth === w && state.lastWidthClass != null) return state.lastWidthClass !== "wide";
         state.lastScreenWidth = w;
-        var cls = w < 900 ? "narrow" : (w < 1300 ? "medium" : "wide");
+        var cls = logicalW < 900 ? "narrow" : (logicalW < 1300 ? "medium" : "wide");
         state.lastWidthClass = cls;
         return cls !== "wide";
     }
@@ -673,32 +685,119 @@ var ModEngineUI = (function(){
         }catch(eSave){}
     }
 
-    // "Comfortable" target width. Below this we start shrinking so the menu fits.
-    function autoUiScale(screenWidth){
-        if(screenWidth == null || screenWidth <= 0) return 1.0;
-        var ratio = screenWidth / 1500.0;
-        if(ratio >= 1.0) return 1.0;
-        return Math.max(0.65, Math.min(1.0, ratio));
+    // Mindustry/Arc reports a logical density factor via Core.graphics.getDensity():
+    //   - 1.0 on desktop (a 160dpi screen)
+    //   - 2.0..3.0 on a typical Android phone
+    // It is the same value Mindustry's own Scl.scl(1) caches under the hood
+    // (scl = max(round((density/1.5 + 0) / 0.5) * 0.5, 1)). We read it directly
+    // because touching Scl.scl() from a mod has visible side effects: it forces
+    // the per-JVM Scl cache to be evaluated, which then affects every other
+    // Arc/Mindustry built-in dialog built after us. getDensity() is a pure read.
+    //
+    // We then mirror what Scl.scl(1) would have returned (without actually
+    // triggering Scl), so our "logical width" math matches Mindustry's own.
+    function mindustryDensityScale(){
+        try{
+            var raw = ArcCore.graphics.getDensity();
+            var d = Number(raw);
+            if(!isNaN(d) && d > 0 && d < 10) return d;
+        }catch(eDensity){}
+        return 1.0;
     }
 
-    // Effective scale = auto * manual, clamped to the safe 0.65..1.0 range.
+    // The "effective" scale factor that Mindustry's Scl would compute. It is
+    // always >= 1.0 (the formula in Arc floors it at 1) and is the exact value
+    // Mindustry multiplies every layout dimension by on mobile. Cached once
+    // per session so the auto-scale never jumps around between reads.
+    var _sclCached = -1;
+    function mindustrySclFactor(){
+        if(_sclCached > 0) return _sclCached;
+        try{
+            var d = mindustryDensityScale();
+            // Reproduce Arc's formula without the side effects:
+            //   mobile: max(round((d/1.5) / 0.5) * 0.5, 1) * product
+            //   desktop: product
+            // We have no clean way to read product, but the default is 1.0
+            // and the user-controlled "ui scale" slider is the only thing
+            // that mutates it. product=1 is the right default for our
+            // auto-scale math: if the user raised product above 1.0 they
+            // want everything bigger, which is the opposite of what we
+            // want here.
+            var product = 1.0;
+            var factor;
+            try{
+                // Arc's Scl.scl(1) returns 1.0 on both desktop AND web. Only
+                // Android/iOS apply the density-based mobile formula. We
+                // match that here so a 1500-px design on WebGL is treated
+                // the same as on the desktop client.
+                var isDesktopLike = false;
+                try{
+                    if(ArcCore.app != null){
+                        if(ArcCore.app.isDesktop == null || ArcCore.app.isDesktop() === true) isDesktopLike = true;
+                        else if(ArcCore.app.isWeb != null && ArcCore.app.isWeb() === true) isDesktopLike = true;
+                        else if(ArcCore.app.isHeadless != null && ArcCore.app.isHeadless() === true) isDesktopLike = true;
+                    }
+                }catch(eAppCheck){}
+                if(isDesktopLike){
+                    factor = product;
+                }else{
+                    factor = Math.max(Math.round((d / 1.5) / 0.5) * 0.5, 1.0) * product;
+                }
+            }catch(eAppType){
+                factor = Math.max(Math.round((d / 1.5) / 0.5) * 0.5, 1.0);
+            }
+            if(factor > 0 && factor < 10) _sclCached = factor;
+        }catch(e){}
+        if(_sclCached <= 0) _sclCached = 1.0;
+        return _sclCached;
+    }
+
+    // Logical screen width in Mindustry's own units (the same units a
+    // Mindustry UI dialog would size itself for). Dividing by the
+    // Mindustry-style scl factor gives us the same number Mindustry itself
+    // sees when its UI asks "is this a phone or a desktop?".
+    function logicalScreenWidth(){
+        var w = 0, h = 0;
+        try{
+            w = ArcCore.graphics.getWidth();
+            h = ArcCore.graphics.getHeight();
+        }catch(eSize){ w = 1080; h = 720; }
+        if(w <= 0) w = 1080;
+        if(h <= 0) h = 720;
+        var s = mindustrySclFactor();
+        if(s <= 0) s = 1;
+        // graphics.getWidth() on Android is the *physical* pixel width.
+        // The logical width is physical / Scl, which is the same number
+        // Mindustry uses internally for its own layout decisions. On
+        // desktop Scl == 1 so logical == physical.
+        return Math.min(w / s, h / s);
+    }
+
+    // "Comfortable" target width. Below this we start shrinking so the menu fits.
+    function autoUiScale(logicalWidth){
+        if(logicalWidth == null || logicalWidth <= 0) return 1.0;
+        var ratio = logicalWidth / 1500.0;
+        if(ratio >= 1.0) return 1.0;
+        return Math.max(0.4, Math.min(1.0, ratio));
+    }
+
+    // Effective scale = auto * manual, clamped to the safe 0.4..1.0 range.
     function effectiveUiScale(){
-        var w = 0;
-        try{ w = ArcCore.graphics.getWidth(); }catch(eW){ w = 0; }
+        var w = logicalScreenWidth();
         var auto = autoUiScale(w);
         var manual = state.uiScale == null ? 1.0 : state.uiScale;
         var combined = auto * manual;
-        if(combined < 0.65) combined = 0.65;
+        if(combined < 0.4) combined = 0.4;
         if(combined > 1.0) combined = 1.0;
         return combined;
     }
 
-    // Local scale factor in [0.65, 1.0]. Applied to text font scales and to
+    // Local scale factor in [0.4, 1.0]. Applied to text font scales and to
     // hard-coded pixel values via clampUiSize(). The dialog itself is always
     // stretched to the full screen regardless of this value.
     function localScale(){
         var v = effectiveUiScale();
-        if(v < 0.65) v = 0.65;
+        if(v < 0.4) v = 0.4;
         if(v > 1.0) v = 1.0;
         return v;
     }
@@ -721,7 +820,13 @@ var ModEngineUI = (function(){
     // Apply the current local scale. The only thing that changes is the per-
     // label font scale (label() multiplies by localScale()) and clampUiSize()
     // output, so we just need a fresh layout pass. We rebuild the menu if it
-    // is currently shown so the new sizes take effect.
+    // is currently shown AND the scale actually changed. There is one
+    // acceptable case where this rebuilds on top of buildRoot(): the very
+    // first show() of a session, when lastAppliedUiScale was reset to -1 and
+    // labels were created with localScale() = 1.0. That second build is
+    // intentional - it is the only way auto-scale takes effect on first
+    // show, since the actual screen size is only known after the dialog has
+    // been laid out.
     function applyUiScale(){
         var next = localScale();
         var prev = state.lastAppliedUiScale;
@@ -731,6 +836,31 @@ var ModEngineUI = (function(){
             refreshRoot();
         }
         return true;
+    }
+
+    // The very first applyUiScale() inside a single show() must run, even if
+    // the value is unchanged, because the menu was just built with localScale()
+    // = 1.0 (lastAppliedUiScale was reset to -1 right before buildRoot).
+    // Without this, auto-scale never appears on first show on mobile: the
+    // post-frame applyUiScale() compares 0.65 to -1, but buildRoot has not
+    // happened yet, so isCompact() returns "wide" and the auto value comes
+    // out as 1.0 — the very first build ends up at scale 1.0 and the post
+    // callback also computes 1.0 because nothing in the dialog has changed.
+    //
+    // We force-apply by clearing lastAppliedUiScale and rebuilding once we
+    // are sure the dialog has its real size on stage.
+    function applyAutoScaleOnShow(){
+        if(dialog == null || !dialog.isShown()) return;
+        var w = 0, h = 0;
+        try{
+            w = ArcCore.graphics.getWidth();
+            h = ArcCore.graphics.getHeight();
+        }catch(eSize){ return; }
+        if(w < 2 || h < 2) return; // dialog not on stage yet, retry next frame
+        var next = localScale();
+        if(Math.abs(next - state.lastAppliedUiScale) < 0.001) return;
+        state.lastAppliedUiScale = next;
+        refreshRoot();
     }
 
     function isPhoneWidth(){
@@ -743,7 +873,19 @@ var ModEngineUI = (function(){
     }
 
     function textBlockWidth(maxWidth){
-        var available = ArcCore.graphics.getWidth() - (state.compact ? 80 : 520);
+        // Use the logical (Scl-normalised) width, not the raw physical pixels,
+        // so text widths shrink the same way everything else does on a
+        // phone. Without this, a 1500-px design assumption on a 1080-px
+        // phone (logical 720) returns the raw 1080 minus 520 = 560, which
+        // is wider than the actual content area and causes wrap.
+        var w = 1080;
+        try{ w = ArcCore.graphics.getWidth(); }catch(eSize){}
+        var s = mindustrySclFactor();
+        if(s < 1) s = 1;
+        var logicalW = w / s;
+        if(logicalW <= 0) logicalW = 1080;
+        var available = logicalW - (state.compact ? 80 : clampUiSize(520));
+        if(available < 260) available = 260;
         return Math.max(260, Math.min(maxWidth, available));
     }
 
@@ -1274,7 +1416,12 @@ var ModEngineUI = (function(){
         operator.add(opText).growX();
         sidebarHost.add(operator).growX().height(64).padTop(gap.lg).row();
 
-        parent.add(sidebarHost).width(Math.min(310, Math.max(220, ArcCore.graphics.getWidth() * 0.22))).growY();
+        // Sidebar is hidden entirely below 1300px (compact mode), but at
+        // 1300-1700px on a phone the 22% rule still leaves a fixed ~280-px
+        // column on a screen where every pixel matters. Scale the column
+        // down so on small non-compact windows the sidebar still shrinks
+        // proportionally.
+        parent.add(sidebarHost).width(clampUiSize(Math.min(310, Math.max(220, ArcCore.graphics.getWidth() * 0.22)))).growY();
     }
 
     function addCompactNav(parent){
@@ -1543,7 +1690,7 @@ var ModEngineUI = (function(){
             body.add(settings).growX().padTop(gap.lg);
         }else{
             body.add(flowPanel).growX().padRight(gap.lg);
-            body.add(settings).width(420).top();
+            body.add(settings).width(clampUiSize(420)).top();
         }
         parent.add(body).growX().padTop(gap.lg).row();
     }
@@ -1573,8 +1720,12 @@ var ModEngineUI = (function(){
         var valueLabel = label(formatter(current), color === theme.cyan ? s.labelCyan : s.labelGold, 1);
         valueLabel.setAlignment(Align.right);
         function fitValue(text){
+            // The displayed text length determines the base font scale. We
+            // always multiply by localScale() so the value label shrinks on
+            // small screens along with every other label in the menu.
             var len = String(text).length;
-            valueLabel.setFontScale(len > 20 ? 0.62 : (len > 14 ? 0.74 : (len > 9 ? 0.86 : 1)));
+            var baseScale = len > 20 ? 0.62 : (len > 14 ? 0.74 : (len > 9 ? 0.86 : 1));
+            valueLabel.setFontScale(baseScale * localScale());
         }
         fitValue(formatter(current));
         line.add(valueLabel).width(state.compact ? 126 : 154).right();
@@ -2202,7 +2353,7 @@ var ModEngineUI = (function(){
             top.add(timer).growX().row();
             top.add(params).growX().padTop(gap.lg);
         }else{
-            top.add(timer).width(420).height(470).padRight(gap.xl);
+            top.add(timer).width(clampUiSize(420)).height(470).padRight(gap.xl);
             top.add(params).growX().height(350);
         }
         parent.add(top).growX().row();
@@ -3044,7 +3195,7 @@ var ModEngineUI = (function(){
             var split = new Table();
             split.top().left();
             split.add(main).growX().padRight(gap.xl);
-            split.add(preview).width(380).top();
+            split.add(preview).width(clampUiSize(380)).top();
             parent.add(split).growX().row();
         }
     }
@@ -3535,11 +3686,16 @@ var ModEngineUI = (function(){
     }
 
     function gaugeValueScale(text, baseScale){
+        // The base scale shrinks the font so long values fit. We multiply by
+        // localScale() so the value label follows the same font scale as
+        // every other label in the menu (see label()).
         var len = String(text).length;
-        if(len <= 3) return baseScale;
-        if(len <= 5) return baseScale * 0.78;
-        if(len <= 7) return baseScale * 0.6;
-        return baseScale * 0.48;
+        var s = 1;
+        if(len <= 3) s = baseScale;
+        else if(len <= 5) s = baseScale * 0.78;
+        else if(len <= 7) s = baseScale * 0.6;
+        else s = baseScale * 0.48;
+        return s * localScale();
     }
 
     function makeGauge(value, caption, percent, color){
@@ -4337,8 +4493,8 @@ var ModEngineUI = (function(){
             right.add(summaryCard("ALL STRUCTURES", String(overview.all), s.labelCyan, s.d.panel)).growX().height(110).row();
             right.add(summaryCard("ENEMY STRUCTURES", String(overview.enemy), overview.enemy > 0 ? s.labelRed : s.labelCyan, overview.enemy > 0 ? s.d.panelRed : s.d.panel)).growX().height(110).padTop(gap.md);
         }else{
-            right.add(summaryCard("ALL STRUCTURES", String(overview.all), s.labelCyan, s.d.panel)).width(240).height(110).padRight(gap.md);
-            right.add(summaryCard("ENEMY STRUCTURES", String(overview.enemy), overview.enemy > 0 ? s.labelRed : s.labelCyan, overview.enemy > 0 ? s.d.panelRed : s.d.panel)).width(220).height(110);
+            right.add(summaryCard("ALL STRUCTURES", String(overview.all), s.labelCyan, s.d.panel)).width(clampUiSize(240)).height(110).padRight(gap.md);
+            right.add(summaryCard("ENEMY STRUCTURES", String(overview.enemy), overview.enemy > 0 ? s.labelRed : s.labelCyan, overview.enemy > 0 ? s.d.panelRed : s.d.panel)).width(clampUiSize(220)).height(110);
         }
 
         if(state.compact){
@@ -4346,7 +4502,7 @@ var ModEngineUI = (function(){
             intro.add(right).growX().padTop(gap.lg).row();
         }else{
             intro.add(left).growX().padRight(gap.xl);
-            intro.add(right).width(500).top();
+            intro.add(right).width(clampUiSize(500)).top();
         }
         parent.add(intro).growX().row();
 
@@ -4817,7 +4973,7 @@ var ModEngineUI = (function(){
             split.add(sidebar).growX().padTop(gap.lg).row();
         }else{
             split.add(terminal).growX().padRight(gap.xl);
-            split.add(sidebar).width(380).top();
+            split.add(sidebar).width(clampUiSize(380)).top();
         }
         parent.add(split).growX().row();
     }
@@ -4997,6 +5153,11 @@ var ModEngineUI = (function(){
     function buildPlayer(parent){
         var s = getStyles();
 
+        // Hard-coded widths in the Player block were picked for a 1500-px
+        // design. On mobile they cause the inner panels to overflow or
+        // refuse to shrink. We feed every hard-coded number through
+        // clampUiSize() so the whole block (head + two columns + summary
+        // cards) collapses together with the rest of the menu.
         var head = new Table();
         head.top().left();
         var intro = new Table();
@@ -5021,7 +5182,7 @@ var ModEngineUI = (function(){
             head.add(pilot).growX().padTop(gap.lg).row();
         }else{
             head.add(intro).growX().left();
-            head.add(pilot).width(520).top();
+            head.add(pilot).width(clampUiSize(520)).top();
         }
         parent.add(head).growX().row();
 
@@ -5086,7 +5247,7 @@ var ModEngineUI = (function(){
             repairBody.add(summaryCard("LIVE STATUS", "OPTIMAL", s.label, s.d.panelGold)).growX().height(150).padTop(gap.lg).row();
         }else{
             repairBody.add(regenSlider).growX().padRight(gap.xl);
-            repairBody.add(summaryCard("LIVE STATUS", "OPTIMAL", s.label, s.d.panelGold)).width(220).height(150).top();
+            repairBody.add(summaryCard("LIVE STATUS", "OPTIMAL", s.label, s.d.panelGold)).width(clampUiSize(220)).height(150).top();
         }
         repair.add(repairBody).growX().padTop(gap.xl);
         leftCol.add(repair).growX().padTop(gap.lg);
@@ -5109,7 +5270,7 @@ var ModEngineUI = (function(){
         ];
         var statusCols = state.compact ? 1 : 2;
         for(var pi = 0; pi < buttons.length; pi++){
-            statusGrid.add(buttons[pi]).growX().height(72).minWidth(state.compact ? 0 : 210).padRight(gap.md).padBottom(gap.md);
+            statusGrid.add(buttons[pi]).growX().height(72).minWidth(state.compact ? 0 : clampUiSize(210)).padRight(gap.md).padBottom(gap.md);
             if((pi + 1) % statusCols === 0) statusGrid.row();
         }
         statuses.add(statusGrid).growX().padTop(gap.lg);
@@ -5127,7 +5288,12 @@ var ModEngineUI = (function(){
             main.add(rightCol).growX().padTop(gap.lg);
         }else{
             main.add(leftCol).growX().padRight(gap.xl);
-            main.add(rightCol).width(560).top();
+            // 560 was the original rightCol width on a 1500-px design; on a
+            // 1080-px phone the same number overflows the remaining space
+            // and the dialog begins clipping the rightmost buttons. Scaling
+            // the column down to localScale() makes the whole block move
+            // together with the rest of the menu on small screens.
+            main.add(rightCol).width(clampUiSize(560)).top();
         }
         parent.add(main).growX().padTop(gap.xl).row();
     }
@@ -5189,7 +5355,7 @@ var ModEngineUI = (function(){
             split.add(turret).growX().padTop(gap.lg);
         }else{
             split.add(left).growX().minWidth(520).top().padRight(gap.lg);
-            split.add(turret).width(460).top();
+            split.add(turret).width(clampUiSize(460)).top();
         }
         parent.add(split).growX().row();
     }
@@ -5654,11 +5820,47 @@ var ModEngineUI = (function(){
         // resized while the menu was closed is handled correctly.
         state.lastScreenWidth = -1;
         // Reset lastAppliedUiScale so the first applyUiScale() after this show
-        // always runs (otherwise a same-scale reopen would be a no-op).
+        // always runs (otherwise a same-scale reopen would be a no-op). This
+        // is the path that picks up the AUTO scale on first show - the slider
+        // callback path is the only other place applyUiScale() runs.
         state.lastAppliedUiScale = -1;
         buildRoot();
         d.cont.add(root).grow();
         d.show();
+        // The dialog does not have its real size on the stage until a frame
+        // after d.show() returns. We post a sequence of frame callbacks so
+        // the auto-scale retry keeps firing until the dialog actually has a
+        // non-zero width and our localScale() produces a value different
+        // from the placeholder 1.0 we used during the very first buildRoot.
+        //
+        // Without this loop, mobile first-show misses the auto scale: the
+        // first applyUiScale() runs while graphics.getWidth() still returns
+        // 0 and localScale() = 1.0; subsequent posts never fire because the
+        // slider callback is the only other place that calls applyUiScale().
+        var applyAttempts = 0;
+        function tryApply(){
+            applyAttempts++;
+            try{
+                if(dialog == null || !dialog.isShown()) return;
+                var before = state.lastAppliedUiScale;
+                applyAutoScaleOnShow();
+                if(state.lastAppliedUiScale === before && applyAttempts < 6){
+                    // The dialog was still 0-sized; retry next frame.
+                    try{
+                        ArcCore.app.post(run(tryApply));
+                    }catch(ePost2){
+                        applyUiScale();
+                    }
+                }
+            }catch(eApply){
+                try{ applyUiScale(); }catch(e2){}
+            }
+        }
+        try{
+            ArcCore.app.post(run(tryApply));
+        }catch(ePost){
+            applyUiScale();
+        }
     }
 
     function hide(){
