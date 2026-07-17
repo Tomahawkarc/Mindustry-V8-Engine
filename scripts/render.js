@@ -282,6 +282,21 @@ function selectionRect(x1, y1, x2, y2, color){
 }
 
 
+function healthBar(unit, color){
+    if(unit == null) return;
+    withOverlay(function(){
+        var max = Math.max(1, unit.maxHealth);
+        var ratio = Math.max(0, Math.min(1, unit.health / max));
+        var width = Math.max(7, unit.hitSize * 0.8);
+        var y = unit.y + unit.hitSize * 0.7;
+        Draw.color(Color.black, 0.72);
+        Fill.rect(unit.x, y, width + 1.4, 2.8);
+        Draw.color(color);
+        Fill.rect(unit.x - width * 0.5 + width * ratio * 0.5, y, width * ratio, 1.6);
+        Draw.reset();
+    });
+}
+
 function selectedBuild(tile, color){
     if(tile == null) return;
     withOverlay(function(){
@@ -299,6 +314,7 @@ module.exports = {
     targetMarker: targetMarker,
     spawnMarker: spawnMarker,
     selectionRect: selectionRect,
-    selectedBuild: selectedBuild
+    selectedBuild: selectedBuild,
+    healthBar: healthBar
 };
 })();
