@@ -220,6 +220,7 @@ var ModEngineUI = (function(){
         turretSpread: 0,
         showTurretRadii: false,
         showUnitRadii: false,
+        showUnitHealth: false,
         miningDrillBoost: true,
         miningEfficiencyBoost: false,
         miningProtocolActive: false,
@@ -1369,7 +1370,7 @@ var ModEngineUI = (function(){
             {id: "mining", text: "Mining", icon: getIcon("pick", "hammer"), mode: "usual"},
             {id: "inspector", text: "Inspector", icon: getIcon("zoom", "search"), mode: "usual"},
             {id: "builds", text: "Builds", icon: getIcon("edit", "wrench"), mode: "sandbox"},
-            {id: "radius", text: "Radius", icon: getIcon("logic", "settings"), mode: "usual"},
+            {id: "render", text: "Render", icon: getIcon("logic", "settings"), mode: "usual"},
             {id: "console", text: "Console", icon: getIcon("terminal", "file"), mode: "usual"},
             {id: "hotkeys", text: "Hotkeys", icon: getIcon("keyboard", "settings"), mode: "usual"}
         ];
@@ -1647,7 +1648,7 @@ var ModEngineUI = (function(){
         else if(state.tab === "inspector") buildInspector(contentHost);
         else if(state.tab === "builds") buildBuilds(contentHost);
         else if(state.tab === "console") buildConsole(contentHost);
-        else if(state.tab === "radius") buildRadius(contentHost);
+        else if(state.tab === "render") buildRender(contentHost);
         else if(state.tab === "hotkeys") buildHotkeys(contentHost);
         else buildUtility(contentHost, state.tab);
 
@@ -3327,8 +3328,13 @@ var ModEngineUI = (function(){
             if(state.selectedUnit != null) callHandler("spawnUnit", {unit: state.selectedUnit, contentName: String(state.selectedUnit.name), amount: state.unitSpawnAmount, enemy: state.unitSpawnEnemy});
         })).height(clampUiSize(42)).minWidth(clampUiSize(140));
         main.add(spawnControls).left().padTop(g(gap.sm)).row();
+        var replaceRow = new Table();
+        replaceRow.left();
+        replaceRow.add(textButton("REPLACE MY UNIT WITH SELECTED", s.action, function(){
+            if(state.selectedUnit != null) callHandler("unitAction", {action: "replacePlayer", unitType: state.selectedUnit});
+        })).height(clampUiSize(44)).growX();
+        main.add(replaceRow).growX().padTop(g(gap.sm)).row();
 
-        
         var modFilterSlot = new Table();
         modFilterSlot.left();
         if(state.unitPlanetFilter === "mods"){
@@ -5710,50 +5716,18 @@ var ModEngineUI = (function(){
         parent.add(section).growX().row();
     }
 
-    function buildRadius(parent){
+    function buildRender(parent){
         var s = getStyles();
-        parent.add(label("Radius Overview", s.label, 1.72)).left().row();
-        parent.add(wrappedLabel("REFERENCE: EFFECTIVE RANGE OF TURRETS AND UNITS CURRENTLY REGISTERED IN THIS SECTOR'S CONTENT DATABASE. VALUES ARE READ DIRECTLY FROM GAME DATA.", s.labelDim, 0.78)).growX().left().padTop(g(gap.sm)).row();
-
+        parent.add(label("Render Controls", s.label, 1.72)).left().row();
+        parent.add(wrappedLabel("Visual overlays for the current battlefield. Settings use the same responsive sizing as the rest of the interface.", s.labelDim, 0.78)).growX().left().padTop(g(gap.sm)).row();
         var overlay = panel(s.d.panelStrong, g(gap.lg));
-        overlay.add(sectionHeader("MAP OVERLAY", "LIVE RANGE CIRCLES ON WORLD", getIcon("eye", "zoom"))).growX().row();
-        overlay.add(wrappedLabel("Draws range zones on the map with Mindustry-style animated shield union (overlaps do not stack).", s.labelMuted, 0.8)).growX().padTop(g(gap.sm)).row();
-        var toggleRow = new Table();
-        toggleRow.left();
-        var turretToggle = toggleTextButton(state.showTurretRadii ? "TURRET RADII: ON" : "TURRET RADII: OFF", state.showTurretRadii ? s.primary : s.action, state.showTurretRadii, function(){
-            callHandler("command", {command: "radius:toggleTurrets"});
+        overlay.add(sectionHeader("UNIT HEALTH", "LIVE BATTLEFIELD STATUS", getIcon("heart", "health"))).growX().row();
+        overlay.add(wrappedLabel("Shows a compact health bar above every unit. Damaged allied units use an amber warning color; enemy units stay red.", s.labelMuted, 0.8)).growX().padTop(g(gap.sm)).row();
+        overlay.add(toggleTextButton(state.showUnitHealth ? "UNIT HEALTH: ON" : "UNIT HEALTH: OFF", state.showUnitHealth ? s.primary : s.action, state.showUnitHealth, function(){
+            callHandler("command", {command: "render:toggleHealth"});
             rebuildContent();
-        });
-        toggleRow.add(turretToggle).height(clampUiSize(50)).growX().padRight(g(gap.md));
-        var unitToggle = toggleTextButton(state.showUnitRadii ? "UNIT RADII: ON" : "UNIT RADII: OFF", state.showUnitRadii ? s.primary : s.action, state.showUnitRadii, function(){
-            callHandler("command", {command: "radius:toggleUnits"});
-            rebuildContent();
-        });
-        toggleRow.add(unitToggle).height(clampUiSize(50)).growX();
-        overlay.add(toggleRow).growX().padTop(g(gap.md));
+        })).height(clampUiSize(50)).growX().padTop(g(gap.md)).row();
         parent.add(overlay).growX().padTop(g(gap.lg)).row();
-
-        var turretEntries = collectTurretRanges();
-        var weaponEntries = collectUnitWeaponRanges();
-        var mineEntries = collectUnitMineRanges();
-
-        radiusSection(parent, "TURRET RANGE", "COUNT: " + turretEntries.length, getIcon("commandAttack", "target"), turretEntries,
-            function(e){ return String(e.block.localizedName).toUpperCase(); },
-            function(e){ return contentDrawable(e.block, getIcon("commandAttack", "target")); },
-            function(e){ return null; },
-            theme.red);
-
-        radiusSection(parent, "UNIT WEAPON RANGE", "COUNT: " + weaponEntries.length, getIcon("units", "factory"), weaponEntries,
-            function(e){ return String(e.type.localizedName).toUpperCase(); },
-            function(e){ return contentDrawable(e.type, getIcon("units", "factory")); },
-            function(e){ return "T" + unitTier(e.type); },
-            theme.gold);
-
-        radiusSection(parent, "UNIT MINING RANGE", "COUNT: " + mineEntries.length, getIcon("pick", "hammer"), mineEntries,
-            function(e){ return String(e.type.localizedName).toUpperCase(); },
-            function(e){ return contentDrawable(e.type, getIcon("units", "factory")); },
-            function(e){ return "T" + unitTier(e.type); },
-            theme.cyan);
     }
 
 
