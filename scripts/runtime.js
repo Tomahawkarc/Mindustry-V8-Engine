@@ -973,6 +973,11 @@ var ModEngineRuntime = (function(){
         quickHudRoot.touchable = Touchable.childrenOnly;
         var holder = new Table();
         quickHudButton = new Button(Styles.clearNonei);
+        try{
+            quickHudButton.getStyle().checked = Styles.defaultt.up;
+            quickHudButton.getStyle().checkedOver = Styles.defaultt.over;
+            quickHudButton.getStyle().over = Styles.defaultt.over;
+        }catch(eButtonStyle){}
         quickHudButton.name = "mod-engine-selection";
         quickHudButton.left();
         quickHudButton.image(Icon.wrench).size(26).padLeft(10).padRight(8);
@@ -997,6 +1002,7 @@ var ModEngineRuntime = (function(){
         quickHudRoot.update(run(function(){
             try{
                 var enabled = modHudVisible() && ui != null && ui.state != null && ui.state.quickSelectionEnabled;
+                try{ quickHudButton.setChecked(ui.state.buildSelectionActive === true); }catch(eChecked){}
                 quickHudRoot.visible = true;
                 if(enabled !== quickHudShown){
                     quickHudShown = enabled;
