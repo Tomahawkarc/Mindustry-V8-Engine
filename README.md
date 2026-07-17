@@ -120,6 +120,7 @@ scripts/
   user-workbench.js
   UI/
     engine-ui.js
+    hud-positioning.js
     slider.js
 assets/shaders/rangezone.frag
 ```
