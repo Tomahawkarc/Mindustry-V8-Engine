@@ -1853,8 +1853,20 @@ var ModEngineRuntime = (function(){
         }catch(e){}
     }
 
+    function cancelBuildSelection(){
+        if(ui == null || ui.state == null) return;
+        ui.state.buildSelectionActive = false;
+        ui.state.buildSelectionDragging = false;
+        buildSelectionDragging = false;
+        selectedBuilds = [];
+        try{ if(buildSelectionInputLayer != null) buildSelectionInputLayer.remove(); }catch(eRemove){}
+        buildSelectionInputLayer = null;
+        notify("SELECTION MODE CLOSED");
+    }
+
     function beginBuildSelection(){
         if(ui == null || ui.state == null) return;
+        if(ui.state.buildSelectionActive){ cancelBuildSelection(); return; }
         ui.state.buildSelectionActive = true;
         ui.state.buildSelectionDragging = false;
         buildSelectionDragging = false;
@@ -2448,7 +2460,12 @@ var ModEngineRuntime = (function(){
             try{ if(ui != null) ui.rebuild(); }catch(e){}
             return;
         }
-        if(cmd === "radius:toggleTurrets"){
+        if(cmd === "render:toggleHealth"){
+            if(ui != null && ui.state != null) ui.state.showUnitHealth = !ui.state.showUnitHealth;
+            notify("UNIT HEALTH: " + (ui.state.showUnitHealth ? "VISIBLE" : "HIDDEN"));
+            return;
+        }
+        if(cmd === "radius:toggleTurrets"){ 
             if(ui != null && ui.state != null){
                 ui.state.showTurretRadii = !ui.state.showTurretRadii;
                 notify("TURRET RADII: " + (ui.state.showTurretRadii ? "VISIBLE" : "HIDDEN"));
@@ -2812,6 +2829,25 @@ var ModEngineRuntime = (function(){
             }catch(eStats){
                 Log.err("Unit stat update failed", eStats);
                 notify("UNIT VITALS UPDATE FAILED");
+            }
+            return;
+        }
+        if(action === "replacePlayer"){
+            var puReplace = playerUnit();
+            var replacement = type;
+            if(puReplace == null || replacement == null){ notify("UNIT REPLACEMENT FAILED"); return; }
+            try{
+                var oldTeam = teamOf(puReplace);
+                var xReplace = puReplace.x;
+                var yReplace = puReplace.y;
+                var newUnit = replacement.create(oldTeam);
+                newUnit.set(xReplace, yReplace);
+                try{ newUnit.health = Math.min(newUnit.maxHealth, puReplace.health); }catch(eHealth){}
+                try{ puReplace.kill(); }catch(eKill){}
+                notify("UNIT REPLACED: " + replacement.name);
+            }catch(eReplace){
+                Log.err("Unit replacement failed", eReplace);
+                notify("UNIT REPLACEMENT FAILED");
             }
             return;
         }
@@ -3212,6 +3248,18 @@ var ModEngineRuntime = (function(){
                 try{ Log.err("Mod Engine range draw failed", eRanges); }catch(eLog){}
             }finally{
                 try{ if(drawRanges) ModEngineRender.endRanges(); }catch(eEnd){}
+            }
+            if(ui.state.showUnitHealth){
+                try{
+                    Groups.unit.each(cons(function(unit){
+                        if(unit == null || unit.type == null) return;
+                        var unitTeam = null;
+                        try{ unitTeam = unit.team(); }catch(eTeam){ unitTeam = unit.team; }
+                        var enemy = unitTeam != null && unitTeam != playerTeam();
+                        var hpColor = enemy ? Color.red : (unit.health < unit.maxHealth - 0.5 ? Color.orange : Color.green);
+                        ModEngineRender.healthBar(unit, hpColor);
+                    }));
+                }catch(eHealthDraw){}
             }
             try{ drawTargetMarker(); }catch(eMarker){}
             try{ drawSpawnMarker(); }catch(eSpawnMarker){}
