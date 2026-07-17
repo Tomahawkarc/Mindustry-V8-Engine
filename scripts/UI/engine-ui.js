@@ -689,73 +689,49 @@ var ModEngineUI = (function(){
     //   - 1.0 on desktop (a 160dpi screen)
     //   - 2.0..3.0 on a typical Android phone
     // It is the same value Mindustry's own Scl.scl(1) caches under the hood
-    // (scl = max(round((density/1.5 + 0) / 0.5) * 0.5, 1)). We read it directly
-    // because touching Scl.scl() from a mod has visible side effects: it forces
-    // the per-JVM Scl cache to be evaluated, which then affects every other
-    // Arc/Mindustry built-in dialog built after us. getDensity() is a pure read.
+    // (scl = max(round((density/1.5) / 0.5) * 0.5, 1)). We need this number
+    // for two reasons:
+    //   1. The "logical" width Mindustry sees when sizing a dialog is
+    //      physical / Scl, not the raw physical width. A 1080-px phone
+    //      with Scl=1.5 is treated by Mindustry as a 720-px screen.
+    //   2. Every cell.width/.height/.size we hand to Arc is multiplied
+    //      by Scl internally before the layout pass. So a width(560) on
+    //      mobile becomes 560*1.5=840px in the rendered dialog. We
+    //      counter this by feeding width(560) through clampUiSize() so
+    //      the final rendered size is 560 * localScale * Scl.
     //
-    // We then mirror what Scl.scl(1) would have returned (without actually
-    // triggering Scl), so our "logical width" math matches Mindustry's own.
-    function mindustryDensityScale(){
-        try{
-            var raw = ArcCore.graphics.getDensity();
-            var d = Number(raw);
-            if(!isNaN(d) && d > 0 && d < 10) return d;
-        }catch(eDensity){}
-        return 1.0;
-    }
-
-    // The "effective" scale factor that Mindustry's Scl would compute. It is
-    // always >= 1.0 (the formula in Arc floors it at 1) and is the exact value
-    // Mindustry multiplies every layout dimension by on mobile. Cached once
-    // per session so the auto-scale never jumps around between reads.
+    // We read Scl.scl(1.0) directly. The first call from a mod forces the
+    // JVM-cached value to be evaluated, but Mindustry's own dialogs
+    // already initialised Scl during engine startup, so by the time the
+    // mod loads the cache is already populated with the correct value
+    // for the current platform. We cache the result locally so we never
+    // re-read it.
     var _sclCached = -1;
-    function mindustrySclFactor(){
+    function mindustryScl(){
         if(_sclCached > 0) return _sclCached;
         try{
-            var d = mindustryDensityScale();
-            // Reproduce Arc's formula without the side effects:
-            //   mobile: max(round((d/1.5) / 0.5) * 0.5, 1) * product
-            //   desktop: product
-            // We have no clean way to read product, but the default is 1.0
-            // and the user-controlled "ui scale" slider is the only thing
-            // that mutates it. product=1 is the right default for our
-            // auto-scale math: if the user raised product above 1.0 they
-            // want everything bigger, which is the opposite of what we
-            // want here.
-            var product = 1.0;
-            var factor;
-            try{
-                // Arc's Scl.scl(1) returns 1.0 on both desktop AND web. Only
-                // Android/iOS apply the density-based mobile formula. We
-                // match that here so a 1500-px design on WebGL is treated
-                // the same as on the desktop client.
-                var isDesktopLike = false;
-                try{
-                    if(ArcCore.app != null){
-                        if(ArcCore.app.isDesktop == null || ArcCore.app.isDesktop() === true) isDesktopLike = true;
-                        else if(ArcCore.app.isWeb != null && ArcCore.app.isWeb() === true) isDesktopLike = true;
-                        else if(ArcCore.app.isHeadless != null && ArcCore.app.isHeadless() === true) isDesktopLike = true;
-                    }
-                }catch(eAppCheck){}
-                if(isDesktopLike){
-                    factor = product;
-                }else{
-                    factor = Math.max(Math.round((d / 1.5) / 0.5) * 0.5, 1.0) * product;
-                }
-            }catch(eAppType){
-                factor = Math.max(Math.round((d / 1.5) / 0.5) * 0.5, 1.0);
-            }
-            if(factor > 0 && factor < 10) _sclCached = factor;
+            var p = Packages.arc.scene.ui.layout.Scl;
+            var v = p.scl(1.0);
+            if(v > 0 && v < 10) _sclCached = v;
         }catch(e){}
+        if(_sclCached <= 0){
+            // Fall back to a pure getDensity() read if Scl is not yet
+            // available (e.g. the mod is loaded before Mindustry has
+            // initialised its UI subsystem). Same formula, no side effects.
+            try{
+                var d = Number(ArcCore.graphics.getDensity());
+                if(!isNaN(d) && d > 0){
+                    _sclCached = Math.max(Math.round((d / 1.5) / 0.5) * 0.5, 1.0);
+                }
+            }catch(e2){}
+        }
         if(_sclCached <= 0) _sclCached = 1.0;
         return _sclCached;
     }
 
     // Logical screen width in Mindustry's own units (the same units a
-    // Mindustry UI dialog would size itself for). Dividing by the
-    // Mindustry-style scl factor gives us the same number Mindustry itself
-    // sees when its UI asks "is this a phone or a desktop?".
+    // Mindustry UI dialog would size itself for). Dividing by Scl gives
+    // the same number Mindustry's own layout code uses internally.
     function logicalScreenWidth(){
         var w = 0, h = 0;
         try{
@@ -764,12 +740,8 @@ var ModEngineUI = (function(){
         }catch(eSize){ w = 1080; h = 720; }
         if(w <= 0) w = 1080;
         if(h <= 0) h = 720;
-        var s = mindustrySclFactor();
+        var s = mindustryScl();
         if(s <= 0) s = 1;
-        // graphics.getWidth() on Android is the *physical* pixel width.
-        // The logical width is physical / Scl, which is the same number
-        // Mindustry uses internally for its own layout decisions. On
-        // desktop Scl == 1 so logical == physical.
         return Math.min(w / s, h / s);
     }
 
@@ -792,9 +764,13 @@ var ModEngineUI = (function(){
         return combined;
     }
 
-    // Local scale factor in [0.4, 1.0]. Applied to text font scales and to
-    // hard-coded pixel values via clampUiSize(). The dialog itself is always
-    // stretched to the full screen regardless of this value.
+    // Global per-element scale factor in [0.4, 1.0]. This number is the
+    // single value applied to the root Group via setScale(), which
+    // scales the entire UI tree (text, cells, hitboxes) by the same
+    // factor in lockstep. Because of setScale, individual label.fontScale
+    // and cell.width values do NOT need to be multiplied by localScale()
+    // — Arc handles the visual scaling and input hitboxes correctly
+    // through the transform.
     function localScale(){
         var v = effectiveUiScale();
         if(v < 0.4) v = 0.4;
@@ -802,19 +778,19 @@ var ModEngineUI = (function(){
         return v;
     }
 
-    // Clamp a hard-coded pixel value to the current scale. Used as a drop-in
-    // replacement for raw numbers in .width/.height/.size when the number was
-    // picked for a 1500-px design width and would overflow on a smaller screen.
-    // Values are scaled, then bounded by a sensible minimum so a button is
-    // never smaller than 32px on a phone.
+    // Clamp a hard-coded pixel value to the current scale. The value is
+    // returned AS-IS — the global Group.setScale on root already handles
+    // visual scaling. The function exists for two reasons:
+    //   1. Call sites can document their intent ("this number was picked
+    //      for a 1500-px design and is safe to scale") without having to
+    //      know whether the scaling machinery is on or off.
+    //   2. Future migrations can flip the implementation without touching
+    //      every call site.
     function clampUiSize(value){
         if(value == null) return value;
         var v = Number(value);
         if(isNaN(v)) return value;
-        var s = localScale();
-        var scaled = v * s;
-        if(scaled < 32 && v >= 32) scaled = 32;
-        return scaled;
+        return v;
     }
 
     // Apply the current local scale. The only thing that changes is the per-
@@ -894,11 +870,13 @@ var ModEngineUI = (function(){
         l.setAlignment(Align.left);
         l.setWrap(wrap === true);
         if(scale != null){
-            // Per-label scale is multiplied by the global localScale so text
-            // shrinks on small screens / when the user lowers the manual
-            // override. setFontScale does not affect hit-testing or layout
-            // (it only changes glyph size) so this is safe.
-            l.setFontScale(scale * localScale());
+            // The per-label scale is used as-is. The global localScale()
+            // is applied separately to the root Group via setScale, so
+            // the entire tree (text and cells together) shrinks by the
+            // same factor in lockstep. Multiplying here as well would
+            // double-apply the scale and leave text disproportionately
+            // small relative to its container.
+            l.setFontScale(scale);
         }
         return l;
     }
@@ -1720,12 +1698,12 @@ var ModEngineUI = (function(){
         var valueLabel = label(formatter(current), color === theme.cyan ? s.labelCyan : s.labelGold, 1);
         valueLabel.setAlignment(Align.right);
         function fitValue(text){
-            // The displayed text length determines the base font scale. We
-            // always multiply by localScale() so the value label shrinks on
-            // small screens along with every other label in the menu.
+            // The displayed text length determines the base font scale.
+            // We do NOT multiply by localScale() — the global Group.setScale
+            // on root already shrinks every label in lockstep.
             var len = String(text).length;
             var baseScale = len > 20 ? 0.62 : (len > 14 ? 0.74 : (len > 9 ? 0.86 : 1));
-            valueLabel.setFontScale(baseScale * localScale());
+            valueLabel.setFontScale(baseScale);
         }
         fitValue(formatter(current));
         line.add(valueLabel).width(state.compact ? 126 : 154).right();
@@ -3686,16 +3664,17 @@ var ModEngineUI = (function(){
     }
 
     function gaugeValueScale(text, baseScale){
-        // The base scale shrinks the font so long values fit. We multiply by
-        // localScale() so the value label follows the same font scale as
-        // every other label in the menu (see label()).
+        // The base scale shrinks the font so long values fit. We do NOT
+        // multiply by localScale() here — the global Group.setScale on
+        // root already shrinks every label in lockstep with the rest of
+        // the menu.
         var len = String(text).length;
         var s = 1;
         if(len <= 3) s = baseScale;
         else if(len <= 5) s = baseScale * 0.78;
         else if(len <= 7) s = baseScale * 0.6;
         else s = baseScale * 0.48;
-        return s * localScale();
+        return s;
     }
 
     function makeGauge(value, caption, percent, color){
@@ -5627,6 +5606,22 @@ var ModEngineUI = (function(){
         addFooter(main);
 
         root.add(main).grow();
+        // Apply localScale() to the entire root via setTransform+setScale.
+        // Because every Cell/Label/Button is a child of this group, they
+        // all shrink (or grow) by the same factor in lockstep. This is
+        // the same mechanism Mindustry uses internally with Scl.scl(),
+        // but applied locally to our root so it does not leak into
+        // other dialogs.
+        //
+        // We do NOT call Scl.setProduct() to avoid disturbing the per-JVM
+        // Scl cache that every other Mindustry dialog relies on.
+        try{
+            root.setTransform(true);
+            root.setOrigin(Align.center);
+            root.setScale(localScale(), localScale());
+        }catch(eScale){
+            Log.err("mod-engine: setTransform/setScale not available", eScale);
+        }
         rebuildContent();
     }
 
