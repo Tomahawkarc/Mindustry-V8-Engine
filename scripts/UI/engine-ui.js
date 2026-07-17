@@ -5580,22 +5580,25 @@ var ModEngineUI = (function(){
     }
 
     function buildRoot(){
+        try{ Log.info("[mod-engine-ui] buildRoot: enter, compact=" + state.compact); }catch(eLog){}
         var s = getStyles();
         state.compact = isCompact();
+        try{ Log.info("[mod-engine-ui] buildRoot: isCompact ok, compact=" + state.compact); }catch(eLog){}
         root = new Table();
+        try{ Log.info("[mod-engine-ui] buildRoot: new root ok"); }catch(eLog){}
         root.background(s.d.screen);
         root.top().left();
 
         if(!state.compact){
-            addSidebar(root);
+            try{ addSidebar(root); Log.info("[mod-engine-ui] buildRoot: addSidebar ok"); }catch(eS){ Log.err("[mod-engine-ui] buildRoot: addSidebar FAILED", eS); throw eS; }
         }
 
         var main = new Table();
         main.top().left();
         main.background(s.d.screen);
-        addTopBar(main);
+        try{ addTopBar(main); Log.info("[mod-engine-ui] buildRoot: addTopBar ok"); }catch(eT){ Log.err("[mod-engine-ui] buildRoot: addTopBar FAILED", eT); throw eT; }
         if(state.compact){
-            addCompactNav(main);
+            try{ addCompactNav(main); Log.info("[mod-engine-ui] buildRoot: addCompactNav ok"); }catch(eN){ Log.err("[mod-engine-ui] buildRoot: addCompactNav FAILED", eN); throw eN; }
         }
 
         contentHost = new Table();
@@ -5611,10 +5614,12 @@ var ModEngineUI = (function(){
         contentWrap.margin(state.compact ? gap.md : gap.xl);
         contentWrap.add(pane).grow();
         main.add(contentWrap).grow().row();
-        addFooter(main);
+        try{ addFooter(main); Log.info("[mod-engine-ui] buildRoot: addFooter ok"); }catch(eF){ Log.err("[mod-engine-ui] buildRoot: addFooter FAILED", eF); throw eF; }
 
         root.add(main).grow();
+        try{ Log.info("[mod-engine-ui] buildRoot: root.add(main).grow() ok, calling rebuildContent"); }catch(eLog){}
         rebuildContent();
+        try{ Log.info("[mod-engine-ui] buildRoot: rebuildContent ok, exit"); }catch(eLog){}
     }
 
     function refreshRoot(){
@@ -5797,7 +5802,9 @@ var ModEngineUI = (function(){
     }
 
     function show(){
+        try{ Log.info("[mod-engine-ui] show: enter"); }catch(eLog){}
         var d = ensureDialog();
+        try{ Log.info("[mod-engine-ui] show: ensureDialog ok"); }catch(eLog){}
         d.cont.clear();
         d.buttons.clear();
         d.setFillParent(true);
@@ -5811,9 +5818,11 @@ var ModEngineUI = (function(){
         // is the path that picks up the AUTO scale on first show - the slider
         // callback path is the only other place applyUiScale() runs.
         state.lastAppliedUiScale = -1;
+        try{ Log.info("[mod-engine-ui] show: state reset, calling buildRoot"); }catch(eLog){}
         buildRoot();
-        d.cont.add(root).grow();
-        d.show();
+        try{ Log.info("[mod-engine-ui] show: buildRoot ok, root class=" + (root == null ? "null" : root.getClass().getName())); }catch(eLog){}
+        try{ d.cont.add(root).grow(); Log.info("[mod-engine-ui] show: cont.add(root).grow() ok"); }catch(eAdd){ Log.err("[mod-engine-ui] show: cont.add(root) FAILED", eAdd); throw eAdd; }
+        try{ d.show(); Log.info("[mod-engine-ui] show: d.show() ok, dialog=" + (d.isShown() ? "shown" : "hidden")); }catch(eShow){ Log.err("[mod-engine-ui] show: d.show() FAILED", eShow); throw eShow; }
         // The dialog does not have its real size on the stage until a frame
         // after d.show() returns. We post a sequence of frame callbacks so
         // the auto-scale retry keeps firing until the dialog actually has a
