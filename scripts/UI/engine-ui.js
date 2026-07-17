@@ -90,49 +90,6 @@ function ScrollPane(actor, style) {
 }
 var KeyCode = Packages.arc.input.KeyCode;
 
-                    while (curr != null) {
-                        if (curr === pane) {
-                            isStillInside = true;
-                            break;
-                        }
-                        curr = curr.parent;
-                    }
-                }
-                if (!isStillInside) {
-                    var parentPane = findParentScrollPane(pane);
-                    try {
-                        if (parentPane != null) {
-                            ArcCore.scene.setScrollFocus(parentPane);
-                        } else {
-                            if (ArcCore.scene.getScrollFocus() === pane) {
-                                ArcCore.scene.setScrollFocus(null);
-                            }
-                        }
-                    } catch(e) {}
-                }
-            }
-        },
-        scrolled: function(event) {
-            try {
-                event.stop();
-            } catch(e) {}
-            return true;
-        }
-    }));
-}
-
-function ScrollPane(actor, style) {
-    var pane;
-    if (style !== undefined) {
-        pane = new RealScrollPane(actor, style);
-    } else {
-        pane = new RealScrollPane(actor);
-    }
-    setupScrollFocus(pane);
-    return pane;
-}
-var KeyCode = Packages.arc.input.KeyCode;
-
 var Vars = Packages.mindustry.Vars;
 var Styles = Packages.mindustry.ui.Styles;
 var Tex = Packages.mindustry.ui.Tex;
@@ -721,6 +678,8 @@ var ModEngineUI = (function(){
         
         
         loadUiScale();
+        // Apply the persisted palette before the first menu is built.
+        try{ if(state.themeName != null) applyTheme(state.themeName); }catch(eThemeLoad){}
     }
 
     function isCompact(){
