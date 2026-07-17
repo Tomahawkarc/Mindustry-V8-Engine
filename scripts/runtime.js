@@ -799,7 +799,6 @@ var ModEngineRuntime = (function(){
             }catch(e){
                 Log.err("Failed to open Mod Engine UI", e);
                 Log.err(e);
-                Vars.ui.showException(e);
                 print(e);
             }
         }));
