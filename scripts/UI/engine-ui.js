@@ -1844,11 +1844,21 @@ var ModEngineUI = (function(){
                     rebuildContent();
                 }));
                 
-                try {
-                    btn.image(Tex.whiteui).size(clampUiSize(12)).color(team.color).padRight(g(gap.xs));
-                } catch(eColor) {}
+                var inner = new Table();
+                inner.left();
                 
-                btn.add(label(String(team.name).toUpperCase(), isCurrent ? s.labelCyan : s.labelMuted, 0.72));
+                // Color swatch
+                var swatch = new Table();
+                try {
+                    swatch.background(makeDrawable(team.color, null, 0, null, false));
+                } catch(eDraw) {}
+                inner.add(swatch).size(clampUiSize(14)).padRight(g(gap.xs));
+                
+                // Team label
+                var teamLabel = label(String(team.name).toUpperCase(), isCurrent ? s.labelCyan : s.labelMuted, 0.72);
+                inner.add(teamLabel).left().growX();
+                
+                btn.add(inner).grow().left().pad(g(gap.xs));
                 
                 teamGrid.add(btn).size(clampUiSize(126), clampUiSize(42)).padRight(g(gap.xs)).padBottom(g(gap.xs));
                 if((idx + 1) % cols === 0) teamGrid.row();
