@@ -62,19 +62,34 @@ function setupScrollFocus(pane) {
                             ArcCore.scene.setScrollFocus(parentPane);
                         } else {
                             if (ArcCore.scene.getScrollFocus() === pane) {
-    pane.addListener(extend(InputListener, {
-        enter: function(event, x, y, pointer, fromActor) {
-            if (pointer < 0) { 
-                try {
-                    ArcCore.scene.setScrollFocus(pane);
-                } catch(e) {}
+                                ArcCore.scene.setScrollFocus(null);
+                            }
+                        }
+                    } catch(e) {}
+                }
             }
         },
-        exit: function(event, x, y, pointer, toActor) {
-            if (pointer < 0) { 
-                var isStillInside = false;
-                if (toActor != null) {
-                    var curr = toActor;
+        scrolled: function(event) {
+            try {
+                event.stop();
+            } catch(e) {}
+            return true;
+        }
+    }));
+}
+
+function ScrollPane(actor, style) {
+    var pane;
+    if (style !== undefined) {
+        pane = new RealScrollPane(actor, style);
+    } else {
+        pane = new RealScrollPane(actor);
+    }
+    setupScrollFocus(pane);
+    return pane;
+}
+var KeyCode = Packages.arc.input.KeyCode;
+
                     while (curr != null) {
                         if (curr === pane) {
                             isStillInside = true;
